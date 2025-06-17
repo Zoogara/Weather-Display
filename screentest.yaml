@@ -1,0 +1,3052 @@
+ota:
+  - platform: esphome
+    password: "8f03e50909721af0db102dcd689f88ea"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "Screentest Fallback Hotspot"
+    password: "hyYhqfhSOlkd"
+
+esphome:
+  name: screentest
+  platformio_options:
+    build_unflags: -Werror=all
+    board_build.flash_mode: dio
+    build_flags: "-DBOARD_HAS_PSRAM" # Added
+    board_build.esp-idf.memory_type: qio_opi #Added
+    board_upload.maximum_ram_size: 524288 #Added
+    board_build.flash_size: 8MB #Added
+    
+logger:
+  level: ERROR
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
+      CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
+      CONFIG_SPIRAM_RODATA: y
+      CONFIG_ESPTOOLPY_FLASHSIZE_8MB: y
+
+api:
+  on_client_connected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - lvgl.widget.show: lbl_hastatus
+  on_client_disconnected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - lvgl.widget.hide: lbl_hastatus
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+ch422g:
+  - id: io_ex
+
+# i2c connections
+i2c:
+  sda: 8
+  scl: 9
+  frequency: 400kHz
+  scan: true
+  id: bus_a
+
+switch:
+  - platform: gpio
+    name: screentest backlight
+    pin: 
+      ch422g: io_ex
+      number: 2
+    restore_mode: ALWAYS_ON
+    id: backlight
+
+  - platform: restart
+    name: "Weather Screen Restart"
+    id: restart_switch
+
+binary_sensor:
+
+  - platform: gpio
+    id: presence_sensor
+    pin: GPIO06
+    name: weather Screen Presence
+    device_class: presence
+    on_state: 
+      then:
+        - if: 
+            condition: 
+              - binary_sensor.is_on: presence_sensor
+              - lvgl.is_paused
+            then:
+              - logger.log: "LVGL resuming"
+              - lvgl.resume:
+              - lvgl.widget.redraw:
+              - switch.turn_on: backlight
+              - script.execute: script_obs
+              - script.execute: script_hours
+              - script.execute: script_days
+        - if:
+            condition:
+              - binary_sensor.is_off: presence_sensor
+              - lvgl.is_idle:
+                  timeout: 5s
+            then: 
+              - logger.log: "LVGL is idle"
+              - switch.turn_off: backlight
+              - lvgl.pause:
+                  show_snow: true
+
+touchscreen:
+  platform: gt911
+  address: 0x5D
+  id: my_touchscreen
+  update_interval: 16ms
+  interrupt_pin: 4
+  reset_pin:
+    ch422g: io_ex
+    number: 1
+  on_touch:
+    - lambda: |-
+          ESP_LOGI("cal", "x=%d, y=%d, x_raw=%d, y_raw=%0d",
+              touch.x,
+              touch.y,
+              touch.x_raw,
+              touch.y_raw
+              );
+    - if:
+        condition: lvgl.is_paused
+        then:
+          - logger.log: "LVGL resuming"
+          - lvgl.resume:
+          - lvgl.widget.redraw:
+          - switch.turn_on: backlight
+          - script.execute: script_obs
+          - script.execute: script_hours
+          - script.execute: script_days
+display:
+  - platform: rpi_dpi_rgb
+    id: my_display
+    update_interval: never
+    auto_clear_enabled: false
+    color_order: RGB
+    pclk_frequency: 16MHz
+    dimensions:
+      width: 800
+      height: 480
+    reset_pin:
+      ch422g: io_ex
+      number: 3
+    de_pin:
+      number: 5
+    hsync_pin:
+      number: 46
+      ignore_strapping_warning: true
+    vsync_pin:
+      number: 3
+      ignore_strapping_warning: true
+    pclk_pin: 7
+    pclk_inverted: true
+    hsync_back_porch: 8
+    hsync_front_porch: 8
+    hsync_pulse_width: 4
+    vsync_back_porch: 16
+    vsync_front_porch: 16
+    vsync_pulse_width: 4
+    data_pins:
+      red:
+        - 1         #r3.
+        - 2         #r4.
+        - 42        #r5
+        - 41        #r6
+        - 40        #r7
+      blue:
+        - 14        #b3
+        - 38        #b4
+        - 18        #b5
+        - 17        #b6
+        - 10        #b7
+      green:
+        - 39        #g2
+        - 0         #g3.
+        - 45        #g4
+        - 48        #g5
+        - 47        #g6
+        - 21        #g7\
+
+time:
+  - platform: homeassistant
+    id: my_time
+    on_time_sync:
+      # start clock
+      then:
+        - lvgl.label.update:
+            id: lbl_datetime
+            text: 
+              time_format: "%H:%M - %a %d %b"
+              time: my_time 
+    on_time:
+      # update clock
+      - seconds: /5
+        then: 
+          - lvgl.label.update:
+              id: lbl_datetime
+              text: 
+                time_format: "%H:%M - %a %d %b"
+                time: my_time
+      # download radar - using timer means script doesn't block
+      - seconds: /12
+        then:
+          - if:
+              condition:
+                and:
+                  - lambda: return id(radar_flag) > 0;
+                  - not:
+                      script.is_running: script_radar_download
+              then:
+                - script.execute: script_radar_download
+      # update observation labels
+      - seconds: 0
+        minutes: /1
+        then: 
+          - script.execute: script_obs
+      # update hourly forecast data and initialise radar downloads
+      - seconds: 0
+        minutes: 1, 11, 21, 31, 41, 51
+        then: 
+          - script.execute: script_hours
+          - if:
+              condition:
+                - lambda: return id(radar_flag) == 0;
+              then: 
+                - lambda: id(radar_flag) = 1;
+                - script.execute: script_radar_download
+          - lambda: id(satellite_flag) = 1;
+          - script.execute: script_satellite_download
+      # update daily forecast 
+      - seconds: 0
+        minutes: /20
+        then: 
+          - script.execute: script_days
+
+script:
+  - id: script_obs
+    then: 
+      - lvgl.widget.refresh:
+          - id: icon_today
+          - id: short_today
+          - id: feels_like
+          - id: atmo_pressure
+          - id: current_temp
+          - id: sunrise
+          - id: sunset
+          - id: humidity
+
+  - id: script_hours
+    then: 
+      - lvgl.widget.refresh:
+          - id: hour0_time
+          - id: hour0_icon
+          - id: hour0_temp
+          - id: hour1_time
+          - id: hour1_icon
+          - id: hour1_temp
+          - id: hour2_time
+          - id: hour2_icon
+          - id: hour2_temp
+          - id: hour3_time
+          - id: hour3_icon
+          - id: hour3_temp
+          - id: hour4_time
+          - id: hour4_icon
+          - id: hour4_temp
+          - id: hour5_time
+          - id: hour5_icon
+          - id: hour5_temp
+          - id: hour6_time
+          - id: hour6_icon
+          - id: hour6_temp
+          - id: hour7_time
+          - id: hour7_icon
+          - id: hour7_temp
+          - id: hour8_time
+          - id: hour8_icon
+          - id: hour8_temp
+          - id: hour9_time
+          - id: hour9_icon
+          - id: hour9_temp
+          - id: hour10_time
+          - id: hour10_icon
+          - id: hour10_temp
+          - id: hour11_time
+          - id: hour11_icon
+          - id: hour11_temp
+          - id: hour12_time
+          - id: hour12_icon
+          - id: hour12_temp
+          - id: hour13_time
+          - id: hour13_icon
+          - id: hour13_temp
+          - id: hour14_time
+          - id: hour14_icon
+          - id: hour14_temp
+          - id: hour15_time
+          - id: hour15_icon
+          - id: hour15_temp
+          - id: hour16_time
+          - id: hour16_icon
+          - id: hour16_temp
+          - id: hour17_time
+          - id: hour17_icon
+          - id: hour17_temp
+          - id: hour18_time
+          - id: hour18_icon
+          - id: hour18_temp
+          - id: hour19_time
+          - id: hour19_icon
+          - id: hour19_temp
+          - id: hour20_time
+          - id: hour20_icon
+          - id: hour20_temp
+          - id: hour21_time
+          - id: hour21_icon
+          - id: hour21_temp
+          - id: hour22_time
+          - id: hour22_icon
+          - id: hour22_temp
+          - id: hour23_time
+          - id: hour23_icon
+          - id: hour23_temp
+
+  - id: script_days
+    then: 
+      - lvgl.widget.refresh:
+          - id: moon_phase_icon
+          - id: moonrise
+          - id: forecast_text_0
+          - id: forecast_icon_0
+          - id: forecast_text_1
+          - id: forecast_icon_1
+          - id: forecast_text_2
+          - id: forecast_icon_2
+          - id: forecast_text_3
+          - id: forecast_icon_3
+          - id: forecast_text_4
+          - id: forecast_icon_4
+          - id: forecast_text_5
+          - id: forecast_icon_5
+          - id: forecast_text_6
+          - id: forecast_icon_6
+
+  - id: script_radar_download
+    then: 
+      - if:
+          condition:
+            lambda: return id(radar_errors) >= 10;
+          then:
+            - lambda: id(radar_dlstat) = "Error";
+            - lvgl.widget.refresh:
+                id: radar_tds
+            - lvgl.widget.hide: lbl_downloading
+            - lambda: |-
+                id(radar_flag) = 0;
+                id(radar_errors) = 0;
+      - if:
+          condition:
+            lambda: return id(radar_flag) != 0;
+          then:
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 1;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "url0";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - online_image.set_url: 
+                      id: radar0
+                      url: !lambda return id(radar_url0).state;
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 2;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "url1";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - online_image.set_url: 
+                      id: radar1
+                      url: !lambda return id(radar_url1).state;
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 3;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "url2";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - online_image.set_url: 
+                      id: radar2
+                      url: !lambda return id(radar_url2).state;
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 4;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "url3";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - online_image.set_url: 
+                      id: radar3
+                      url: !lambda return id(radar_url3).state;
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 5;
+                then:
+                  - lambda: id(radar_dlstat) = "url4";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lvgl.widget.show: lbl_downloading
+                  - online_image.set_url: 
+                      id: radar4
+                      url: !lambda return id(radar_url4).state;
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 6;
+                then:
+                  - lambda: id(radar_dlstat) = "url5";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lvgl.widget.show: lbl_downloading
+                  - online_image.set_url: 
+                      id: radar5
+                      url: !lambda return id(radar_url5).state;  
+                  - script.stop: script_radar_download
+                
+  - id: script_satellite_download
+    then: 
+      - if:
+          condition:
+            lambda: return id(satellite_flag) != 0;
+          then:
+            - lvgl.widget.show: lbl_downloading
+            - delay: 10sec
+            - online_image.set_url: 
+                id: satellite1
+                url: !lambda return id(satellite_url).state;
+      - if:
+          condition:
+            lambda: return id(satellite_errors) >= 4;
+          then:
+            - lvgl.widget.hide: lbl_downloading
+            - lambda: |-
+                id(satellite_flag) = 0;
+                id(satellite_errors) = 0;
+
+  - id: page_move_prev
+    then:
+      - lvgl.page.previous:
+
+  - id: page_move_next
+    then:
+      - lvgl.page.next:
+
+# Sun required for sun elevation sensor
+sun:
+  latitude: -36.051961
+  longitude: 146.458654
+
+globals:
+  - id: idle_time
+    type: long
+  - id: month_name
+    type: std::string[13]
+    initial_value: '{ "Never", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }'
+  - id: hist_wind
+    type: float[30]
+  - id: hist_dir
+    type: int[30]
+  - id: dir
+    type: int
+  - id: maxwind
+    type: float
+  - id: arrayindex
+    type: int
+  - id: first_run
+    type: bool
+    initial_value: "false"
+  - id: radar_flag
+    type: int
+    initial_value: "0"
+  - id: radar_errors
+    type: int
+    initial_value: "0"
+  - id: satellite_flag
+    type: int
+    initial_value: "0"
+  - id: satellite_errors
+    type: int
+    initial_value: "0"
+  - id: radar_dlstat
+    type: std::string
+
+http_request:
+  timeout: 10s
+  watchdog_timeout: 30s
+
+online_image: 
+  - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&eink=2&invert"
+    id: templot
+    format: png
+    type: RGB565
+    update_interval: 10min
+    on_download_finished:
+      then: 
+        - delay: 1s
+        - lvgl.image.update:
+            id: templot_img
+            src: templot
+
+  - url: "https://google.com/dummy.png"
+    id: radar0
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: id(radar_flag) = 2;
+    on_error: 
+      then:
+        - lambda: ++id(radar_errors);
+
+  - url: "https://google.com/dummy.png"
+    id: radar1
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: id(radar_flag) = 3;
+    on_error: 
+      then:
+        - lambda: ++id(radar_errors);
+
+  - url: "https://google.com/dummy.png"
+    id: radar2
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: id(radar_flag) = 4;
+    on_error: 
+      then:
+        - lambda: ++id(radar_errors);
+
+  - url: "https://google.com/dummy.png"
+    id: radar3
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: id(radar_flag) = 5;
+    on_error: 
+      then:
+        - lambda: ++id(radar_errors);
+  
+  - url: "https://google.com/dummy.png"
+    id: radar4
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: id(radar_flag) = 6;
+    on_error: 
+      then:
+        - lambda: ++id(radar_errors);
+ 
+  - url: "https://google.com/dummy.png"
+    id: radar5
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lvgl.animimg.update:
+            id: radar
+            src: [ radar5, radar4, radar3, radar2, radar1, radar0 ]
+        - lvgl.animimg.start: radar
+        - lvgl.widget.hide: lbl_downloading
+        - lambda: |-
+            id(radar_dlstat) = "-";
+            id(radar_flag) = 0;
+            id(radar_errors) = 0;
+        - lvgl.widget.refresh:
+            id: radar_tds
+        - lvgl.widget.refresh: 
+            id: radar_ts
+    on_error: 
+      then:
+        - lambda: ++id(radar_errors);
+
+  - url: "https://google.com/dummy.png"
+    id: satellite1
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lvgl.image.update:
+            id: satellite
+            src: satellite1
+        - lvgl.widget.hide: lbl_downloading
+        - lambda: id(satellite_flag) = 0;
+        - lambda: id(satellite_errors) = 0;
+        - lvgl.widget.refresh: 
+            id: sat_ts
+    on_error: 
+      then:
+        - script.stop: script_satellite_download    
+        - lambda: ++id(satellite_errors);
+        - script.execute: script_satellite_download    
+
+image: 
+  - file: "map1b.png"
+    id: background_map
+    type: RGB565
+  - file: "map1f.png"
+    id: foreground_map
+    type: RGB565
+    transparency: alpha_channel
+  - file: "map2.png"
+    id: satellite_map
+    type: RGB565
+    transparency: alpha_channel 
+  - file: "map4.png"
+    id: base_map
+    type: RGB565
+    transparency: alpha_channel 
+
+# All sensors sourced from HA - Ecowitt weather station sensors
+# BOM weather forecast sensors
+text_sensor:
+
+# debug sensors
+
+  - platform: wifi_info
+    ip_address:
+      name: ESP IP Address
+      address_0:
+        name: ESP IP Address 0
+      address_1:
+        name: ESP IP Address 1
+      address_2:
+        name: ESP IP Address 2
+      address_3:
+        name: ESP IP Address 3
+      address_4:
+        name: ESP IP Address 4
+    ssid:
+      name: ESP Connected SSID
+    bssid:
+      name: ESP Connected BSSID
+    mac_address:
+      name: ESP Mac Wifi Address
+      id: esp_mac_address
+    scan_results:
+      name: ESP Latest Scan Results
+    dns_address:
+      name: ESP DNS Address
+
+  - platform: version
+    name: "ESPHome Version"
+    hide_timestamp: true
+
+# weather sensors
+
+  - platform: homeassistant
+    entity_id: sensor.weather_station_temperature
+    id: temp
+
+  - platform: homeassistant
+    entity_id: sensor.wind_direction
+    id: wind_dir
+    on_value: 
+      then:
+        - lambda: |-
+            static int index=0;
+            static int prev_index=29;
+            // Convert wind direction to int, speed to float
+            id(dir) = atoi(id(wind_dir).state.c_str());
+            float speed = atof(id(wind_speed).state.c_str());
+            // Store in array
+            if ((id(hist_wind)[prev_index]!=speed || id(hist_dir)[prev_index]!=id(dir)) && speed!=0) {
+              id(hist_wind)[index] = speed;
+              id(hist_dir)[index] = id(dir);
+              index += 1;
+              prev_index += 1;
+              if (index==30) { index = 0; }
+              if (prev_index==30) { prev_index = 0; }
+            }
+            // Trend maximum for last 30
+            id(maxwind) = id(hist_wind)[0];
+            for (size_t i = 0; i < 30; ++i) {
+              if (id(hist_wind)[i] > id(maxwind)) {
+                id(maxwind) = id(hist_wind)[i];
+              }
+            }
+        - lvgl.widget.update:
+            id: dir_indicator
+            x: !lambda |-
+              return  90 + 50 - 6 + (89 * (cos((id(dir)-90)*PI/180)));
+            y: !lambda |-
+              return  90 + 140 - 6 + (89 * (sin((id(dir)-90)*PI/180)));
+        - lvgl.canvas.fill:
+            id: wind_stick
+            color: BLACK
+        - lambda: |-
+            lv_draw_line_dsc_t line_dsc;
+            lv_draw_line_dsc_init(&line_dsc);
+            line_dsc.width = 1;
+            line_dsc.color = lv_palette_lighten(LV_PALETTE_GREEN, 3);
+            line_dsc.opa = LV_OPA_COVER;
+            line_dsc.round_start = 0;
+            line_dsc.round_end = 0;      
+              
+            for (int ax = 0; ax < 30; ++ax)  {
+              int x1 = 90 + (90 * (cos((id(hist_dir)[ax]-90)*PI/180)));
+              int y1 = 90 + (90 * (sin((id(hist_dir)[ax]-90)*PI/180)));
+              int x2 = 90 + ((90-(70*id(hist_wind)[ax]/id(maxwind))) * (cos((id(hist_dir)[ax]-90)*PI/180)));
+              int y2 = 90 + ((90-(70*id(hist_wind)[ax]/id(maxwind))) * (sin((id(hist_dir)[ax]-90)*PI/180)));
+              lv_point_t line_points[2] = {
+                { static_cast<lv_coord_t>(x1), static_cast<lv_coord_t>(y1) },
+                { static_cast<lv_coord_t>(x2), static_cast<lv_coord_t>(y2) }
+              };
+              lv_canvas_draw_line(wind_stick, line_points, 2, &line_dsc);
+            }
+
+  - platform: homeassistant
+    entity_id: sensor.wind_speed
+    id: wind_speed
+    on_value: 
+      then:
+        - lvgl.widget.update:
+            id: dir_indicator
+            arc_color: !lambda |-
+              float speed = atof(x.c_str());
+              if (speed<=11) return lv_palette_lighten(LV_PALETTE_BLUE, 3); 
+              if (speed>11 && speed<=30) return lv_palette_main(LV_PALETTE_GREEN); 
+              if (speed>30 && speed<=60) return lv_palette_main(LV_PALETTE_ORANGE); 
+              return lv_palette_main(LV_PALETTE_RED); 
+        - if:
+            condition:
+              lambda: |-
+                return (atof(x.c_str())<10);
+            then:
+              - lvgl.label.update:
+                  id: speed_text
+                  text: 
+                    format: "%.1f"
+                    args: [atof(x.c_str())]
+            else:
+              - lvgl.label.update:
+                  id: speed_text
+                  text: 
+                    format: "%.0f"
+                    args: [atof(x.c_str())]
+
+  - platform: homeassistant
+    entity_id: sensor.named_wind_direction
+    id: named_dir
+    on_value:
+      then: 
+        - if:
+            condition:
+              not:
+                lambda: return id(first_run);
+            then: 
+              - component.update: templot 
+              - script.execute: script_obs
+              - script.execute: script_hours
+              - script.execute: script_days
+              - script.execute: script_radar_download
+              - lambda: id(satellite_flag) = 1;
+              - script.execute: script_satellite_download
+              - lambda: id(first_run) = true;
+        - lvgl.label.update:
+            id: dir_text
+            text: !lambda return x;
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url0
+    id: radar_url0
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp1
+    id: radar_timestamp
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url1
+    id: radar_url1
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url2
+    id: radar_url2
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url3
+    id: radar_url3
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url4
+    id: radar_url4
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url5
+    id: radar_url5
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: urls
+    id: satellite_url
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    id: radar_urls
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamps
+    id: satellite_timestamp
+
+  - platform: homeassistant
+    entity_id: sensor.rain_accumulation
+    id: total_rain
+    on_value: 
+      then:
+        lvgl.widget.refresh:
+          - id: rain_total
+
+  - platform: homeassistant
+    entity_id: sensor.atmospheric_pressure_msl
+    id: pressure
+
+  - platform: homeassistant
+    entity_id: sensor.wind_gust
+    id: gust
+    on_value: 
+      then:
+        lvgl.widget.refresh:
+          - id: wind_gust
+
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_moon_icon
+    id: moon_phase
+
+  - platform: homeassistant
+    id: moonrise_time
+    entity_id: sensor.template_weather_display_moonrise_next
+
+  - platform: homeassistant
+    id: forecast0
+    entity_id: sensor.template_weather_display_forecast0
+    attribute: long_text
+
+  - platform: homeassistant
+    id: forecasttoday
+    entity_id: sensor.rutherglen_short_text_0
+
+  - platform: homeassistant
+    id: forecast1
+    entity_id: sensor.template_weather_display_forecast1
+
+  - platform: homeassistant
+    id: forecast2
+    entity_id: sensor.template_weather_display_forecast2
+
+  - platform: homeassistant
+    id: forecast3
+    entity_id: sensor.template_weather_display_forecast3
+
+  - platform: homeassistant
+    id: forecast4
+    entity_id: sensor.template_weather_display_forecast4
+
+  - platform: homeassistant
+    id: forecast5
+    entity_id: sensor.template_weather_display_forecast5
+
+  - platform: homeassistant
+    id: forecast6
+    entity_id: sensor.template_weather_display_forecast6
+              
+  - platform: homeassistant
+    id: icon0
+    entity_id: sensor.template_weather_display_icon0
+          
+  - platform: homeassistant
+    id: icon1
+    entity_id: sensor.template_weather_display_icon1
+   
+  - platform: homeassistant
+    id: icon2
+    entity_id: sensor.template_weather_display_icon2
+
+  - platform: homeassistant
+    id: icon3
+    entity_id: sensor.template_weather_display_icon3
+ 
+  - platform: homeassistant
+    id: icon4
+    entity_id: sensor.template_weather_display_icon4
+   
+  - platform: homeassistant
+    id: icon5
+    entity_id: sensor.template_weather_display_icon5
+
+  - platform: homeassistant
+    id: icon6
+    entity_id: sensor.template_weather_display_icon6
+
+  # Hourly icons
+
+  - platform: homeassistant
+    id: hour_icon0
+    entity_id: sensor.template_weather_display_hourly_icon0
+
+  - platform: homeassistant
+    id: hour_icon1
+    entity_id: sensor.template_weather_display_hourly_icon1
+
+  - platform: homeassistant
+    id: hour_icon2
+    entity_id: sensor.template_weather_display_hourly_icon2
+ 
+  - platform: homeassistant
+    id: hour_icon3
+    entity_id: sensor.template_weather_display_hourly_icon3
+ 
+  - platform: homeassistant
+    id: hour_icon4
+    entity_id: sensor.template_weather_display_hourly_icon4
+
+  - platform: homeassistant
+    id: hour_icon5
+    entity_id: sensor.template_weather_display_hourly_icon5
+
+  - platform: homeassistant
+    id: hour_icon6
+    entity_id: sensor.template_weather_display_hourly_icon6
+
+  - platform: homeassistant
+    id: hour_icon7
+    entity_id: sensor.template_weather_display_hourly_icon7
+
+  - platform: homeassistant
+    id: hour_icon8
+    entity_id: sensor.template_weather_display_hourly_icon8
+
+  - platform: homeassistant
+    id: hour_icon9
+    entity_id: sensor.template_weather_display_hourly_icon9
+
+  - platform: homeassistant
+    id: hour_icon10
+    entity_id: sensor.template_weather_display_hourly_icon10
+
+  - platform: homeassistant
+    id: hour_icon11
+    entity_id: sensor.template_weather_display_hourly_icon11
+
+  - platform: homeassistant
+    id: hour_icon12
+    entity_id: sensor.template_weather_display_hourly_icon12
+
+  - platform: homeassistant
+    id: hour_icon13
+    entity_id: sensor.template_weather_display_hourly_icon13
+
+  - platform: homeassistant
+    id: hour_icon14
+    entity_id: sensor.template_weather_display_hourly_icon14
+
+  - platform: homeassistant
+    id: hour_icon15
+    entity_id: sensor.template_weather_display_hourly_icon15
+
+  - platform: homeassistant
+    id: hour_icon16
+    entity_id: sensor.template_weather_display_hourly_icon16
+
+  - platform: homeassistant
+    id: hour_icon17
+    entity_id: sensor.template_weather_display_hourly_icon17
+
+  - platform: homeassistant
+    id: hour_icon18
+    entity_id: sensor.template_weather_display_hourly_icon18
+
+  - platform: homeassistant
+    id: hour_icon19
+    entity_id: sensor.template_weather_display_hourly_icon19
+
+  - platform: homeassistant
+    id: hour_icon20
+    entity_id: sensor.template_weather_display_hourly_icon20
+
+  - platform: homeassistant
+    id: hour_icon21
+    entity_id: sensor.template_weather_display_hourly_icon21
+
+  - platform: homeassistant
+    id: hour_icon22
+    entity_id: sensor.template_weather_display_hourly_icon22
+
+  - platform: homeassistant
+    id: hour_icon23
+    entity_id: sensor.template_weather_display_hourly_icon23
+        
+  - platform: homeassistant
+    id: fl
+    entity_id: sensor.rutherglen_temp_feels_like
+
+  - platform: homeassistant
+    id: datetime_0
+    entity_id: sensor.template_weather_display_hourly_time0
+
+  - platform: homeassistant
+    id: datetime_1
+    entity_id: sensor.template_weather_display_hourly_time1
+
+  - platform: homeassistant
+    id: datetime_2
+    entity_id: sensor.template_weather_display_hourly_time2
+
+  - platform: homeassistant
+    id: datetime_3
+    entity_id: sensor.template_weather_display_hourly_time3
+
+  - platform: homeassistant
+    id: datetime_4
+    entity_id: sensor.template_weather_display_hourly_time4
+
+  - platform: homeassistant
+    id: datetime_5
+    entity_id: sensor.template_weather_display_hourly_time5
+
+  - platform: homeassistant
+    id: datetime_6
+    entity_id: sensor.template_weather_display_hourly_time6
+
+  - platform: homeassistant
+    id: datetime_7
+    entity_id: sensor.template_weather_display_hourly_time7
+
+  - platform: homeassistant
+    id: datetime_8
+    entity_id: sensor.template_weather_display_hourly_time8
+
+  - platform: homeassistant
+    id: datetime_9
+    entity_id: sensor.template_weather_display_hourly_time9
+
+  - platform: homeassistant
+    id: datetime_10
+    entity_id: sensor.template_weather_display_hourly_time10
+
+  - platform: homeassistant
+    id: datetime_11
+    entity_id: sensor.template_weather_display_hourly_time11
+
+  - platform: homeassistant
+    id: datetime_12
+    entity_id: sensor.template_weather_display_hourly_time12
+
+  - platform: homeassistant
+    id: datetime_13
+    entity_id: sensor.template_weather_display_hourly_time13
+
+  - platform: homeassistant
+    id: datetime_14
+    entity_id: sensor.template_weather_display_hourly_time14
+
+  - platform: homeassistant
+    id: datetime_15
+    entity_id: sensor.template_weather_display_hourly_time15
+
+  - platform: homeassistant
+    id: datetime_16
+    entity_id: sensor.template_weather_display_hourly_time16
+
+  - platform: homeassistant
+    id: datetime_17
+    entity_id: sensor.template_weather_display_hourly_time17
+
+  - platform: homeassistant
+    id: datetime_18
+    entity_id: sensor.template_weather_display_hourly_time18
+
+  - platform: homeassistant
+    id: datetime_19
+    entity_id: sensor.template_weather_display_hourly_time19
+
+  - platform: homeassistant
+    id: datetime_20
+    entity_id: sensor.template_weather_display_hourly_time20
+
+  - platform: homeassistant
+    id: datetime_21
+    entity_id: sensor.template_weather_display_hourly_time21
+
+  - platform: homeassistant
+    id: datetime_22
+    entity_id: sensor.template_weather_display_hourly_time22
+
+  - platform: homeassistant
+    id: datetime_23
+    entity_id: sensor.template_weather_display_hourly_time23
+
+  - platform: homeassistant
+    id: sunrise_next_text
+    entity_id: sensor.weather_data
+    attribute: sunrise_txt
+
+  - platform: homeassistant
+    id: sunset_next_text
+    entity_id: sensor.weather_data
+    attribute: sunset_txt
+    
+font:
+  # Forecast text
+  - file: "fonts/calibri.ttf"
+    id: calibri_13
+    size: 13
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  - file: "fonts/Forecast.ttf"
+    id: forecast_24
+    size: 36
+    bpp: 4
+    glyphs: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+  # Weather display detail text
+  - file: "fonts/calibri.ttf"
+    id: calibri_19
+    size: 19
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  - file: "fonts/calibri.ttf"
+    id: calibri_17
+    size: 17
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  # weather icons from:
+  # https://github.com/erikflowers/weather-icons/blob/master/font/weathericons-regular-webfont.ttf
+  # Install font on your pc/mac and edit with Word to make these
+  # easier to understand and troubleshoot
+  - file: "fonts/weathericons-regular-webfont.ttf"
+    id: weather_24
+    size: 24
+    bpp: 4
+    glyphs: [
+      "", # clear
+      "", # cloudy
+      "", # cyclone
+      "", # dust
+      "", # fog
+      "", # frost
+      "", # haze
+      "", # heavy_shower
+      "", # heavy_shower_night
+      "", # light_rain
+      "", # light_shower
+      "", # light_shower_night
+      "", # mostly_sunny
+      "\uF086", # mostly sunny night??
+      "", # partly_cloudy      "", # partly_cloudy_night
+      "", # rain
+      "", # shower
+      "", # shower_night
+      "", # snow
+      "", # storm
+      "", # sunny
+      "", # tropical_cyclone
+      "\uF02A",
+      "\uF019",
+      "\uF071",
+      "\uF095",
+      "\uF09A",
+      "\uF09D",
+      "\uF0A0",
+      "\uF0A3",
+      "\uF0A6",
+      "\uF0AA",
+      "\uF07D",
+      "" # wind
+      ]
+
+  - file: "fonts/weathericons-regular-webfont.ttf"
+    id: weather_36
+    size: 36
+    bpp: 4
+    glyphs: [
+      "", # clear
+      "", # cloudy
+      "", # cyclone
+      "", # dust
+      "", # fog
+      "", # frost
+      "", # haze
+      "", # heavy_shower
+      "", # heavy_shower_night
+      "", # light_rain
+      "", # light_shower
+      "", # light_shower_night
+      "", # mostly_sunny
+      "\uF086", # mostly sunny night??
+      "", # partly_cloudy      "", # partly_cloudy_night
+      "", # rain
+      "", # shower
+      "", # shower_night
+      "", # snow
+      "", # storm
+      "", # sunny
+      "", # tropical_cyclone
+      "\uF02A",
+      "\uF019",
+      "" # wind
+      ]
+
+  - file: 'https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf'
+    id: mdi_42
+    size: 42
+    bpp: 4
+    glyphs: [
+      "\U000F0335", # mdi-lightbulb
+      "\U000F0336", # mdi-lightbulb-outline
+      ]
+
+  # weather display time and temp
+  - file: "fonts/calibri.ttf"
+    id: calibri_25
+    size: 25
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+   
+  # weather display wind speed
+  - file: "fonts/calibri.ttf"
+    id: calibri_40
+    size: 40
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+    
+# State is negative after sunset and before sunrise  
+sensor:
+
+  # wifi
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic" 
+
+  # sun
+
+  - platform: sun
+    id: sun_elevation
+    type: elevation
+
+  - platform: homeassistant
+    id: bomhumidity
+    entity_id: sensor.rutherglen_humidity
+              
+  - platform: homeassistant
+    id: sunrise_next
+    entity_id: sensor.weather_data
+    attribute: sunrise
+
+  - platform: homeassistant
+    id: sunset_next
+    entity_id: sensor.weather_data
+    attribute: sunset
+
+# hourly temp forecast
+
+  - platform: homeassistant
+    id: hourlytemp_0
+    entity_id: sensor.weather_data
+    attribute: temperature_0
+
+  - platform: homeassistant
+    id: hourlytemp_1
+    entity_id: sensor.weather_data
+    attribute: temperature_1
+
+  - platform: homeassistant
+    id: hourlytemp_2
+    entity_id: sensor.weather_data
+    attribute: temperature_2
+
+  - platform: homeassistant
+    id: hourlytemp_3
+    entity_id: sensor.weather_data
+    attribute: temperature_3
+
+  - platform: homeassistant
+    id: hourlytemp_4
+    entity_id: sensor.weather_data
+    attribute: temperature_4
+
+  - platform: homeassistant
+    id: hourlytemp_5
+    entity_id: sensor.weather_data
+    attribute: temperature_5
+
+  - platform: homeassistant
+    id: hourlytemp_6
+    entity_id: sensor.weather_data
+    attribute: temperature_6
+
+  - platform: homeassistant
+    id: hourlytemp_7
+    entity_id: sensor.weather_data
+    attribute: temperature_7
+
+  - platform: homeassistant
+    id: hourlytemp_8
+    entity_id: sensor.weather_data
+    attribute: temperature_8
+
+  - platform: homeassistant
+    id: hourlytemp_9
+    entity_id: sensor.weather_data
+    attribute: temperature_9
+
+  - platform: homeassistant
+    id: hourlytemp_10
+    entity_id: sensor.weather_data
+    attribute: temperature_10
+
+  - platform: homeassistant
+    id: hourlytemp_11
+    entity_id: sensor.weather_data
+    attribute: temperature_11
+
+  - platform: homeassistant
+    id: hourlytemp_12
+    entity_id: sensor.weather_data
+    attribute: temperature_12
+
+  - platform: homeassistant
+    id: hourlytemp_13
+    entity_id: sensor.weather_data
+    attribute: temperature_13
+
+  - platform: homeassistant
+    id: hourlytemp_14
+    entity_id: sensor.weather_data
+    attribute: temperature_14
+
+  - platform: homeassistant
+    id: hourlytemp_15
+    entity_id: sensor.weather_data
+    attribute: temperature_15
+
+  - platform: homeassistant
+    id: hourlytemp_16
+    entity_id: sensor.weather_data
+    attribute: temperature_16
+
+  - platform: homeassistant
+    id: hourlytemp_17
+    entity_id: sensor.weather_data
+    attribute: temperature_17
+
+  - platform: homeassistant
+    id: hourlytemp_18
+    entity_id: sensor.weather_data
+    attribute: temperature_18
+
+  - platform: homeassistant
+    id: hourlytemp_19
+    entity_id: sensor.weather_data
+    attribute: temperature_19
+
+  - platform: homeassistant
+    id: hourlytemp_20
+    entity_id: sensor.weather_data
+    attribute: temperature_20
+
+  - platform: homeassistant
+    id: hourlytemp_21
+    entity_id: sensor.weather_data
+    attribute: temperature_21
+
+  - platform: homeassistant
+    id: hourlytemp_22
+    entity_id: sensor.weather_data
+    attribute: temperature_22
+
+  - platform: homeassistant
+    id: hourlytemp_23
+    entity_id: sensor.weather_data
+    attribute: temperature_23
+
+number:
+  - platform: template
+    id: position
+    name: position
+    min_value: 0
+    max_value: 360
+    step: 1
+    optimistic: True
+    initial_value: 0
+
+lvgl:
+  displays:
+    - my_display
+  style_definitions:
+    - id: header_footer
+      bg_color: 0x2F8CD8
+      bg_grad_color: 0x005782
+      bg_grad_dir: VER
+      bg_opa: COVER
+      border_opa: TRANSP
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0xFFFFFF
+      width: 100%
+      height: 32
+    - id: forecast_text
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0x000000
+      text_font: calibri_13
+    - id: forecast_glyph
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0x000000
+      text_font: weather_24
+  top_layer:
+    widgets:
+      - obj:
+          id: status
+          align: CENTER
+          width: 700
+          height: 350
+          pad_all: 6
+          hidden: true
+          layout: # enable the GRID layout for the children widgets
+            type: GRID # split the rows and the columns proportionally
+            pad_row: 6
+            pad_column: 8
+            grid_columns: [FR(90), FR(10)]
+            grid_rows: [FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1)] 
+          widgets:
+            - label:
+                id: mac
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                pad_all: 6
+                text: !lambda return id(esp_mac_address).state;
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 0                
+      - obj:
+          align: TOP_MID
+          styles: header_footer
+          widgets:
+            - label:
+                id: pagetitle
+                text: "Rutherglen Weather"
+                align: CENTER
+                text_align: CENTER
+                text_color: 0xFFFFFF
+                pad_all: 6
+            - label:
+                text: "\uF1EB"
+                id: lbl_hastatus
+                hidden: true
+                align: top_right
+                x: 0
+                y: 0
+                text_align: right
+                text_color: 0xFFFFFF
+                pad_all: 6
+            - label:
+                text: "\uF019"
+                id: lbl_downloading
+                hidden: true
+                align: top_right
+                x: -40
+                y: 1
+                width: 15
+                text_align: left
+                text_color: RED
+                pad_all: 6
+            - label:
+                id: lbl_datetime
+                align: top_left
+                x: 0
+                y: 0
+                text_align: left
+                text_color: 0xFFFFFF
+                pad_all: 6    
+                on_press:
+                  then: 
+                    - lvgl.widget.show: status
+                    - lvgl.widget.refresh: mac
+                on_long_press:
+                  lvgl.widget.hide: status
+      - buttonmatrix:
+          align: bottom_mid
+          styles: header_footer
+          pad_all: 0
+          outline_width: 0
+          id: top_layer
+          items:
+            styles: header_footer
+          rows:
+            - buttons:
+              - id: page_prev
+                text: "\uF053"
+                on_press:
+                  then:
+                    - script.execute: page_move_prev
+              - id: page_home
+                text: "\uF015"
+                on_press:
+                  then:
+                    - lvgl.page.show: weather_page
+              - id: page_next
+                text: "\uF054"
+                on_press:
+                  then:
+                    - script.execute: page_move_next
+  pages:
+    - id: weather_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen Weather"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+      widgets:
+    # Wind Rose
+        - canvas:
+            id: wind_stick
+            x: 50
+            y: 140
+            height: 180
+            width: 180
+       
+        - arc:
+            x: 50
+            y: 140
+            height: 180
+            width: 180
+            id: wind_rose
+            arc_width: 2
+            start_angle: 0
+            end_angle: 360
+            adjustable: false 
+            arc_color: WHITE   
+        - arc:
+            id: dir_indicator
+            x: 10
+            y: 10
+            start_angle: 0
+            end_angle: 360
+            arc_width: 6
+            adjustable: false 
+            height: 12
+            width: 12
+            arc_color: BLUE
+        - label:
+            x: 50
+            y: 110
+            text_font: calibri_19
+            text_color: RED
+            width: 180
+            text_align: CENTER
+            text:  "N"
+        - label:
+            x: 50
+            y: 334
+            text_font: calibri_19
+            text_color: RED
+            width: 180
+            text_align: CENTER
+            text:  "S"
+        - label:
+            x: 244
+            y: 221
+            text_font: calibri_19
+            text_color: RED
+            text:  "E" 
+        - label:
+            x: 21
+            y: 221
+            text_font: calibri_19
+            text_color: RED
+            text:  "W"             
+        - label:
+            id: dir_text
+            x: 50
+            y: 180
+            text_font: calibri_25
+            text_color: WHITE
+            text_align: CENTER
+            width: 180
+            text: "-"
+        - label:
+            x: 50
+            y: 250
+            text_font: calibri_19
+            text_color: WHITE
+            text_align: CENTER
+            width: 180
+            text: "km/h"
+        - label:
+            id: speed_text
+            x: 50
+            y: 210
+            text_font: calibri_40
+            text_color: WHITE
+            text_align: CENTER
+            width: 180
+            text: "-"
+
+# Observations
+
+        - label:
+            id: icon_today
+            x: 20
+            y: 45
+            text_font: weather_36
+            text_color: WHITE
+            text: !lambda return id(icon0).state;
+        - label: 
+            id: current_temp
+            x: 87
+            y: 46
+            text_font: calibri_25
+            text_color: WHITE
+            text: !lambda return (id(temp).state + " °C").c_str();
+        - label:
+            id: short_today
+            x: 87
+            y: 73
+            styles: forecast_text
+            text_color: WHITE
+            text: !lambda return id(forecasttoday).state;
+            height: 25
+            width: 135
+        - label: 
+            id: feels_like_icon
+            x: 235
+            y: 40
+            text_font: forecast_24
+            text_color: WHITE
+            text: "A"
+        - label: 
+            id: feels_like
+            x: 270
+            y: 49
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return (id(fl).state + " °C").c_str();
+        - label: 
+            id: rain_total_icon
+            x: 235
+            y: 65
+            text_font: forecast_24
+            text_color: WHITE
+            text: "B"
+        - label: 
+            id: rain_total
+            x: 270
+            y: 74
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return (id(total_rain).state + " mm").c_str();
+        - label: 
+            id: atmo_pressure_icon
+            x: 235
+            y: 90
+            text_font: forecast_24
+            text_color: WHITE
+            text: "C"        
+        - label: 
+            id: atmo_pressure
+            x: 270
+            y: 99
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return (id(pressure).state + " hPa").c_str();
+        - label: 
+            id: wind_gust_icon
+            x: 235
+            y: 115
+            text_font: forecast_24
+            text_color: WHITE
+            text: "D"        
+        - label: 
+            id: wind_gust
+            x: 270
+            y: 124
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return (id(gust).state + " km/h").c_str();
+        - label: 
+            id: sunrise_icon
+            x: 360
+            y: 40
+            text_font: forecast_24
+            text_color: WHITE
+            text: "F"
+        - label: 
+            id: sunrise
+            x: 395
+            y: 49
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return id(sunrise_next_text).state;
+        - label: 
+            id: sunset_icon
+            x: 360
+            y: 65
+            text_font: forecast_24
+            text_color: WHITE
+            text: "E"
+        - label: 
+            id: sunset
+            x: 395
+            y: 74
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return id(sunset_next_text).state;
+        - label: 
+            id: humidity_icon
+            x: 360
+            y: 90
+            text_font: forecast_24
+            text_color: WHITE
+            text: "G"        
+        - label: 
+            id: humidity
+            x: 395
+            y: 99
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f %%", id(bomhumidity).state);
+                    return h;
+        - label: 
+            id: moon_phase_icon
+            x: 360
+            y: 115
+            text_font: weather_24
+            text_color: WHITE
+            text: !lambda return id(moon_phase).state;
+        - label: 
+            id: moonrise
+            x: 395
+            y: 124
+            text_font: calibri_17
+            text_color: WHITE
+            text: !lambda return id(moonrise_time).state;
+
+# temperature plot
+
+        - image: 
+            id: templot_img
+            x: 255
+            y: 150
+            src: templot
+
+# Hourly forecast
+
+        - obj:
+            id: hourly_forecast
+            x: 15
+            y: 360
+            width: 440
+            height: 95
+            bg_color: BLACK
+            border_width: 0
+            layout:
+              pad_column: 0
+              pad_row: 0
+              type: GRID
+              grid_rows: [14, 37, 13]
+              grid_columns: [45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45] 
+            widgets: 
+              - label: 
+                  id: hour0_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 0
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_0).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour0_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 0
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon0).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour0_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 0
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_0).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour1_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 1
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_1).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour1_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 1
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon1).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour1_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 1
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_1).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour2_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 2
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_2).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour2_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 2
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon2).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour2_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 2
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_2).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour3_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 3
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_3).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour3_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 3
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon3).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour3_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 3
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_3).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour4_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 4
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_4).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour4_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 4
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon4).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour4_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 4
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_4).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour5_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 5
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_5).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour5_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 5
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon5).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour5_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 5
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_5).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour6_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 6
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_6).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour6_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 6
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon6).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour6_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 6
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_6).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour7_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 7
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_7).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour7_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 7
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon7).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour7_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 7
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_7).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour8_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 8
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_8).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour8_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 8
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon8).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour8_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 8
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_8).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour9_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 9
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_9).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour9_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 9
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon9).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour9_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 9
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_9).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour10_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 10
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_10).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour10_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 10
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon10).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour10_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 10
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_10).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour11_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 11
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_11).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour11_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 11
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon11).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour11_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 11
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_11).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour12_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 12
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_12).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour12_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 12
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon12).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour12_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 12
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_12).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour13_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 13
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_13).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour13_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 13
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon13).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour13_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 13
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_13).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour14_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 14
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_14).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour14_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 14
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon14).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour14_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 14
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_14).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour15_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 15
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_15).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour15_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 15
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon15).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour15_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 15
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_15).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour16_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 16
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_16).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour16_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 16
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon16).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour16_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 16
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_16).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour17_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 17
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_17).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour17_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 17
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon17).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour17_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 17
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_17).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour18_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 18
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_18).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour18_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 18
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon18).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour18_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 18
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_18).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour19_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 19
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_19).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour19_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 19
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon19).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour19_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 19
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_19).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour20_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 20
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_20).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour20_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 20
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon20).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour20_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 20
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_20).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour21_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 21
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_21).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour21_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 21
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon21).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour21_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 21
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_21).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour22_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 22
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_22).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour22_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 22
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon22).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour22_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 22
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_22).state);
+                    return h;
+                  text_font: calibri_13
+
+              - label: 
+                  id: hour23_time
+                  grid_cell_row_pos: 0
+                  grid_cell_column_pos: 23
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(datetime_23).state;
+                  text_font: calibri_13
+              - label: 
+                  id: hour23_icon
+                  grid_cell_row_pos: 1
+                  grid_cell_column_pos: 23
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda return id(hour_icon23).state;
+                  text_font: weather_24
+              - label: 
+                  id: hour23_temp
+                  grid_cell_row_pos: 2
+                  grid_cell_column_pos: 23
+                  text_color: WHITE
+                  grid_cell_x_align: CENTER
+                  text_align: CENTER
+                  text: !lambda |-
+                    char h[20];
+                    snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_23).state);
+                    return h;
+                  text_font: calibri_13
+
+# Forecast
+
+        - label:
+            id: forecast_text_0
+            x: 550
+            y: 45
+            height: 120
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast0).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_text_1
+            x: 550
+            y: 185
+            height: 40
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast1).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_text_2
+            x: 550
+            y: 230
+            height: 40
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast2).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_text_3
+            x: 550
+            y: 275
+            height: 40
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast3).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_text_4
+            x: 550
+            y: 320
+            height: 40
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast4).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_text_5
+            x: 550
+            y: 365
+            height: 40
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast5).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_text_6
+            x: 550
+
+            y: 410
+            height: 40
+            width: 240
+            long_mode: WRAP
+            text_align: LEFT
+            text: !lambda return id(forecast6).state;
+            styles: forecast_text
+            text_color: WHITE
+        - label:
+            id: forecast_icon_0
+            x: 500
+            y: 41
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon0).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - label:
+            id: forecast_icon_1
+            x: 500
+            y: 181
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon1).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - label:
+            id: forecast_icon_2
+            x: 500
+            y: 226
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon2).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - label:
+            id: forecast_icon_3
+            x: 500
+            y: 271
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon3).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - label:
+            id: forecast_icon_4
+            x: 500
+            y: 316
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon4).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - label:
+            id: forecast_icon_5
+            x: 500
+            y: 361
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon5).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - label:
+            id: forecast_icon_6
+            x: 500
+            y: 406
+            height: 30
+            width: 30
+            text_align: LEFT
+            text: !lambda return id(icon6).state;
+            styles: forecast_glyph
+            text_color: WHITE
+        - line:
+            points: 
+              - 520, 176
+              - 780, 176
+            line_color: LIGHTBLUE
+            line_width: 2
+        - line:
+            points: 
+              - 520, 221
+              - 780, 221
+            line_color: LIGHTBLUE
+            line_width: 2
+        - line:
+            points: 
+              - 520, 266
+              - 780, 266
+            line_color: LIGHTBLUE
+            line_width: 2
+        - line:
+            points: 
+              - 520, 311
+              - 780, 311
+            line_color: LIGHTBLUE
+            line_width: 2
+        - line:
+            points: 
+              - 520, 356
+              - 780, 356
+            line_color: LIGHTBLUE
+            line_width: 2
+        - line:
+            points: 
+              - 520, 401
+              - 780, 401
+            line_color: LIGHTBLUE
+            line_width: 2
+        - line:
+            points: 
+              - 490, 35
+              - 490, 445
+            line_color: LIGHTBLUE
+            line_width: 2
+            
+
+    - id: radar_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen Radar"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+
+      widgets:
+        - image: 
+            id: map1
+            x: 90
+            y: 110
+            src: background_map
+        - animimg: 
+            id: radar
+            x: 90
+            y: 110
+            src: [ radar5, radar4, radar3, radar2, radar1, radar0 ]
+            duration: 6000ms
+            auto_start: false
+        - image: 
+            id: map1f
+            x: 90
+            y: 110
+            src: foreground_map          
+        - image:
+            id: basemap
+            x: 454
+            y: 110
+            src: base_map
+        - image:
+            id: satellite
+            x: 454
+            y: 110
+            src: satellite1
+        - image: 
+            id: map2
+            x: 454
+            y: 110
+            src: satellite_map
+        - label:
+            x: 90
+            y: 90
+            text_font: calibri_19
+            text_color: WHITE
+            text_align: LEFT
+            text: "Radar"            
+        - label:
+            id: radar_ts
+            align_to:
+              id: map1
+              align: OUT_BOTTOM_LEFT
+              y: 3
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: RIGHT
+            text: !lambda return id(radar_timestamp).state;
+        - label:
+            id: radar_tds
+            align_to:
+              id: radar_ts
+              align: OUT_BOTTOM_LEFT
+              x: 3
+            text_font: calibri_13
+            text_color: WHITE
+            text: !lambda return id(radar_dlstat);
+        - label:
+            x: 454
+            y: 90
+            text_font: calibri_19
+            text_color: WHITE
+            text_align: LEFT
+            text: "Satellite"            
+        - label:
+            id: sat_ts
+            align_to:
+              id: map2
+              align: OUT_BOTTOM_LEFT
+              y: 3
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: LEFT
+            text: !lambda return id(satellite_timestamp).state;
+
+    - id: lights_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen Lights"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+
+      widgets:
+        - obj: # a properly placed coontainer object for all these controls
+            align: CENTER
+            width: 800
+            height: 400
+            pad_all: 6
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            layout: # enable the GRID layout for the children widgets
+              type: GRID # split the rows and the columns proportionally
+              pad_row: 6
+              pad_column: 8
+              grid_columns: [FR(1), FR(1), FR(1), FR(1)]
+              grid_rows: [FR(1), FR(1), FR(1)] 
+            widgets:
+              - button:
+                  id: light1
+                  grid_cell_column_pos: 0
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_up_east
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+              - button:
+                  id: light2
+                  grid_cell_column_pos: 0
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_stop_east
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+              - button:
+                  id: light3
+                  grid_cell_column_pos: 0
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_down_east
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+
+              - button:
+                  id: light4
+                  grid_cell_column_pos: 1
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_up_south
+                        align: CENTER
+                        text: "\U000F005D"
+              - button:
+                  id: light5
+                  grid_cell_column_pos: 1
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_stop_south
+                        align: CENTER
+                        text: "\U000F04DB"
+              - button:
+                  id: light6
+                  grid_cell_column_pos: 1
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_down_south
+                        align: CENTER
+                        text: "\U000F0045"
+
+              - button:
+                  id: light7
+                  grid_cell_column_pos: 2
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_up_west
+                        align: CENTER
+                        text: "\U000F005D"
+              - button:
+                  id: light8
+                  grid_cell_column_pos: 2
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_stop_west
+                        align: CENTER
+                        text: "\U000F04DB"
+              - button:
+                  id: light9
+                  grid_cell_column_pos: 2
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: cov_down_west
+                        align: CENTER
+                        text: "\U000F0045"
+
+              - button:
+                  id: light10
+                  grid_cell_column_pos: 3
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: light10_ind
+                        align: CENTER
+                        text: "\U000F005D"
+              - button:
+                  id: light11
+                  grid_cell_column_pos: 3
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: light11_ind
+                        align: CENTER
+                        text: "\U000F04DB"
+              - button:
+                  id: light12
+                  grid_cell_column_pos: 3
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: light12_ind
+                        align: CENTER
+                        text: "\U000F0045"
