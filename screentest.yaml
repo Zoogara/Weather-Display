@@ -1,27 +1,14 @@
-ota:
-  - platform: esphome
-    password: "8f03e50909721af0db102dcd689f88ea"
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-
-  ap:
-    ssid: "Screentest Fallback Hotspot"
-    password: "hyYhqfhSOlkd"
+# System parameters inc network, hardware and api
 
 esphome:
   name: screentest
   platformio_options:
     build_unflags: -Werror=all
     board_build.flash_mode: dio
-    build_flags: "-DBOARD_HAS_PSRAM" # Added
-    board_build.esp-idf.memory_type: qio_opi #Added
-    board_upload.maximum_ram_size: 524288 #Added
-    board_build.flash_size: 8MB #Added
-    
-logger:
-  level: ERROR
+    build_flags: "-DBOARD_HAS_PSRAM" 
+    board_build.esp-idf.memory_type: qio_opi 
+    board_upload.maximum_ram_size: 524288 
+    board_build.flash_size: 8MB 
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -36,20 +23,6 @@ esp32:
       CONFIG_SPIRAM_RODATA: y
       CONFIG_ESPTOOLPY_FLASHSIZE_8MB: y
 
-api:
-  on_client_connected:
-    - if:
-        condition:
-          lambda: 'return (0 == client_info.find("Home Assistant "));'
-        then:
-          - lvgl.widget.show: lbl_hastatus
-  on_client_disconnected:
-    - if:
-        condition:
-          lambda: 'return (0 == client_info.find("Home Assistant "));'
-        then:
-          - lvgl.widget.hide: lbl_hastatus
-
 psram:
   mode: octal
   speed: 80MHz
@@ -57,7 +30,6 @@ psram:
 ch422g:
   - id: io_ex
 
-# i2c connections
 i2c:
   sda: 8
   scl: 9
@@ -65,36 +37,91 @@ i2c:
   scan: true
   id: bus_a
 
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  ap:
+    ssid: "Screentest Fallback Hotspot"
+    password: "hyYhqfhSOlkd"
+
+ota:
+  - platform: esphome
+    password: "8f03e50909721af0db102dcd689f88ea"
+
+logger:
+  level: ERROR
+
+# API connect / disconnect toggles status icon on heading bar
+api:
+  on_client_connected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - lvgl.widget.show: lbl_hastatus
+          - lambda: |-
+              id(api_connect_time) = id(my_time).now();
+  on_client_disconnected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - lvgl.widget.hide: lbl_hastatus
+
 switch:
+  # Backlight on I/O extender - no PWM so on/off only
   - platform: gpio
-    name: screentest backlight
+    name: "Backlight"
     pin: 
       ch422g: io_ex
       number: 2
     restore_mode: ALWAYS_ON
     id: backlight
 
+  # Restart switch - used on status screen
   - platform: restart
     name: "Weather Screen Restart"
     id: restart_switch
 
+  # LVGL switch used to toggle returning to home page on screen wake
+  - platform: lvgl
+    widget: home_on_wake
+    id: sw_home_on_wake
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Toggles presence sensor and touch to wake OR just touch
+  - platform: lvgl
+    widget: wake_on_presence
+    id: sw_wake_on_presence
+    restore_mode: RESTORE_DEFAULT_OFF
+
 binary_sensor:
 
+  # LD2410 presence sensor - only using state pin, tuned previous on test hardware
   - platform: gpio
     id: presence_sensor
     pin: GPIO06
     name: weather Screen Presence
     device_class: presence
     on_state: 
+      # Turn on screen if not already on if presnce is detected
+      # otherwise turn off screen if presnce no longer detected and no interaction in last 5 seconds
       then:
         - if: 
             condition: 
               - binary_sensor.is_on: presence_sensor
+              - switch.is_on: sw_wake_on_presence
               - lvgl.is_paused
             then:
               - logger.log: "LVGL resuming"
               - lvgl.resume:
               - lvgl.widget.redraw:
+              - if:
+                  condition:
+                    - switch.is_on: sw_home_on_wake
+                  then:
+                    - lvgl.page.show: weather_page                    
               - switch.turn_on: backlight
               - script.execute: script_obs
               - script.execute: script_hours
@@ -110,6 +137,7 @@ binary_sensor:
               - lvgl.pause:
                   show_snow: true
 
+# Touchscreen parameters as per other ESPHome projects using this hardware
 touchscreen:
   platform: gt911
   address: 0x5D
@@ -120,23 +148,25 @@ touchscreen:
     ch422g: io_ex
     number: 1
   on_touch:
-    - lambda: |-
-          ESP_LOGI("cal", "x=%d, y=%d, x_raw=%d, y_raw=%0d",
-              touch.x,
-              touch.y,
-              touch.x_raw,
-              touch.y_raw
-              );
-    - if:
-        condition: lvgl.is_paused
-        then:
-          - logger.log: "LVGL resuming"
-          - lvgl.resume:
-          - lvgl.widget.redraw:
-          - switch.turn_on: backlight
-          - script.execute: script_obs
-          - script.execute: script_hours
-          - script.execute: script_days
+    # On any touch, if screen is OFF, turn on and refresh values
+    then:
+      - if:
+          condition: lvgl.is_paused
+          then:
+            - logger.log: "LVGL resuming"
+            - lvgl.resume:
+            - lvgl.widget.redraw:
+            - if:
+                condition:
+                  - switch.is_on: sw_home_on_wake
+                then:
+                  - lvgl.page.show: weather_page
+            - switch.turn_on: backlight
+            - script.execute: script_obs
+            - script.execute: script_hours
+            - script.execute: script_days
+
+# Display as per Waveshare docs and other projects
 display:
   - platform: rpi_dpi_rgb
     id: my_display
@@ -187,19 +217,26 @@ display:
         - 47        #g6
         - 21        #g7\
 
+# Time sourved from Home Assitant
 time:
   - platform: homeassistant
     id: my_time
     on_time_sync:
-      # start clock
       then:
+        # Display clock on title bar
         - lvgl.label.update:
             id: lbl_datetime
             text: 
               time_format: "%H:%M - %a %d %b"
               time: my_time 
+        # Set global storing time of first time synch - we will display this as boot time on status page
+        - lambda: |-
+            if (id(boot_time_flag))
+              { id(boot_time) = id(my_time).now();
+                id(boot_time_flag) = false;
+              }
     on_time:
-      # update clock
+      # Update clock on title bar, every five seconds is accurate enough.
       - seconds: /5
         then: 
           - lvgl.label.update:
@@ -207,7 +244,9 @@ time:
               text: 
                 time_format: "%H:%M - %a %d %b"
                 time: my_time
-      # download radar - using timer means script doesn't block
+      # Download radar - using timer means script doesn't block
+      # Only run script if flag is set and script not already running
+      # This will only run when the on_time: minutes: 1, 11, 21, 31, 41, 51 has run first
       - seconds: /12
         then:
           - if:
@@ -218,12 +257,13 @@ time:
                       script.is_running: script_radar_download
               then:
                 - script.execute: script_radar_download
-      # update observation labels
+      # Update observation labels once a minute
       - seconds: 0
         minutes: /1
         then: 
           - script.execute: script_obs
-      # update hourly forecast data and initialise radar downloads
+      # Update hourly forecast data and initialise radar downloads
+      # Radar data is updated every ten minutes on 10 minute steps - thus we do ours a minute later
       - seconds: 0
         minutes: 1, 11, 21, 31, 41, 51
         then: 
@@ -236,13 +276,14 @@ time:
                 - script.execute: script_radar_download
           - lambda: id(satellite_flag) = 1;
           - script.execute: script_satellite_download
-      # update daily forecast 
+      # Update daily forecast every 20 min - this is good enough to keep up with BOM updates
       - seconds: 0
         minutes: /20
         then: 
           - script.execute: script_days
 
 script:
+  # update all observation fields - called on wake and every minute
   - id: script_obs
     then: 
       - lvgl.widget.refresh:
@@ -255,6 +296,7 @@ script:
           - id: sunset
           - id: humidity
 
+  # update hourly forecast fields, every 10 minutes and on wake
   - id: script_hours
     then: 
       - lvgl.widget.refresh:
@@ -331,6 +373,7 @@ script:
           - id: hour23_icon
           - id: hour23_temp
 
+  # Update daily forecast fields - every 20 minutes and on wake
   - id: script_days
     then: 
       - lvgl.widget.refresh:
@@ -351,8 +394,14 @@ script:
           - id: forecast_text_6
           - id: forecast_icon_6
 
+  # Radar dowload script - note - this script gets run every 10 minutes, and then every 12
+  # seconds after that run until all =images are downloaded or too many errors.  This 
+  # approach is used because the http_request: engine is VERY resource hungry and crashes can occur
+  # if we simply try and download these one after the other.
   - id: script_radar_download
     then: 
+      # If we have got to 10 errors or more during download of ALL timeslots
+      # then give up and display an error message
       - if:
           condition:
             lambda: return id(radar_errors) >= 10;
@@ -364,6 +413,10 @@ script:
             - lambda: |-
                 id(radar_flag) = 0;
                 id(radar_errors) = 0;
+      # This block executes only if flag is set to other than zero,
+      # the flag represents the url to download from the list of radar image urls.
+      # All each section does is update the matching online_image: with the new URL 
+      # then exits the scrip.  The online_image object manages the rest of the download.
       - if:
           condition:
             lambda: return id(radar_flag) != 0;
@@ -372,14 +425,21 @@ script:
                 condition:
                   lambda: return id(radar_flag) == 1;
                 then:
+                  # turn on downloading icon - to warn users that response may be slow as http_request: blocks
                   - lvgl.widget.show: lbl_downloading
+                  # update status text to indicate what image is being downloaded
                   - lambda: id(radar_dlstat) = "url0";
+                  # refresh the field that displays the above global
                   - lvgl.widget.refresh:
                       id: radar_tds
+                  # update the URL of the online_image: object - this iniates the download
                   - online_image.set_url: 
                       id: radar0
                       url: !lambda return id(radar_url0).state;
+                  # nothing more to do here so stop script.  After successful download this block won't run
+                  # when script called second, third time etc. but next will.
                   - script.stop: script_radar_download
+            # Repeat above for each call of script with updated radar_flag value...
             - if:
                 condition:
                   lambda: return id(radar_flag) == 2;
@@ -440,18 +500,21 @@ script:
                       id: radar5
                       url: !lambda return id(radar_url5).state;  
                   - script.stop: script_radar_download
-                
+
+  # Satellite image download script            
   - id: script_satellite_download
     then: 
+      # similar to radar download - check if flag is set then update online_image url
       - if:
           condition:
             lambda: return id(satellite_flag) != 0;
           then:
+            - delay: 15s
             - lvgl.widget.show: lbl_downloading
-            - delay: 10sec
             - online_image.set_url: 
                 id: satellite1
-                url: !lambda return id(satellite_url).state;
+                url: !lambda return id(satellite_url).state; 
+      # Give up after 4 failures
       - if:
           condition:
             lambda: return id(satellite_errors) >= 4;
@@ -461,63 +524,91 @@ script:
                 id(satellite_flag) = 0;
                 id(satellite_errors) = 0;
 
+  # Page selection scripts - only here as placeholders in case any processing require on page change
   - id: page_move_prev
     then:
       - lvgl.page.previous:
-
   - id: page_move_next
     then:
       - lvgl.page.next:
 
-# Sun required for sun elevation sensor
+# Sun required for sun elevation sensor used for day/night comparisons
 sun:
   latitude: -36.051961
   longitude: 146.458654
 
+# Globals including those used for display and behaviour flags
 globals:
-  - id: idle_time
-    type: long
-  - id: month_name
-    type: std::string[13]
-    initial_value: '{ "Never", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }'
+  # Array that stores last 30 wind velocity figures for wind compass
   - id: hist_wind
     type: float[30]
+  # Array that stores last 30 wind directions for wind compass
   - id: hist_dir
     type: int[30]
+  # Wind direction - saved between readings
   - id: dir
     type: int
+  # maximum wind in last 30 readings
   - id: maxwind
     type: float
+  # used for array lookup for wind compass
   - id: arrayindex
     type: int
+  # Flag for first run of device - used to force update of most things EXCEPT radar
   - id: first_run
     type: bool
-    initial_value: "false"
+    initial_value: "true"
+  # Flag/counter for downloading radar images
   - id: radar_flag
     type: int
     initial_value: "0"
+  # Counter for radar download errors
   - id: radar_errors
     type: int
     initial_value: "0"
+  # flag to trigger satellite image download
   - id: satellite_flag
     type: int
     initial_value: "0"
+  # Counter for satellite image download errors
   - id: satellite_errors
     type: int
     initial_value: "0"
+  # Status tring to indicate radar download state 
   - id: radar_dlstat
     type: std::string
+  # Time of boot (first time synch)
+  - id: boot_time
+    type: esphome::ESPTime
+  # Flag used to ensure boot_time only stored on FIRST time synch
+  - id: boot_time_flag
+    type: bool
+    initial_value: "true"
+  # Time of last successful API connection
+  - id: api_connect_time
+    type: esphome::ESPTime
+  # Flag for indication if the status pop-up window is displayed
+  - id: status_hidden
+    type: bool
+    initial_value: "true"
 
+# http_request block required for online_image: - note the watchdog timeout needs to longer 
+# than the timeout: value - this prevents rebouts when http_request: blocks EVERYTHING ^&%^&%%$!!
 http_request:
-  timeout: 10s
+  timeout: 11s
   watchdog_timeout: 30s
 
+# Online images
 online_image: 
+  # Temperature plot sourced from a HA history graph using the Puppet add-on
+  # from https://github.com/balloob/home-assistant-addons repository
   - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&eink=2&invert"
     id: templot
     format: png
     type: RGB565
+    # note we simply update this every 10 mins
     update_interval: 10min
+    # If it doesn't work - either leave empty or show previous
     on_download_finished:
       then: 
         - delay: 1s
@@ -525,18 +616,26 @@ online_image:
             id: templot_img
             src: templot
 
+  # Radar images - urls are generated by template in HA, then these objects are 
+  # updated every 10 minutes by the radar download script.  Once the script is started it runs every 12
+  # seconds untill error count exceeded or all images downloaded.  See script for comment on why this approach.
   - url: "https://google.com/dummy.png"
     id: radar0
     format: png
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
+      # If the download of this image is successful, change flag so next will be initiated 
+      # on next script run
       then: 
         - lambda: id(radar_flag) = 2;
     on_error: 
+      # If the download fails, increment error flag.  The radar flag is not update thus
+      # the radar download script will attempt this image again on next run
       then:
         - lambda: ++id(radar_errors);
 
+  # do the rest of the images one at a time
   - url: "https://google.com/dummy.png"
     id: radar1
     format: png
@@ -585,12 +684,15 @@ online_image:
       then:
         - lambda: ++id(radar_errors);
  
+  # last image download differs from first 5
   - url: "https://google.com/dummy.png"
     id: radar5
     format: png
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
+      # if we are successful on the last, force update on the animimg, hide the downloading icon,
+      # reset all flags and counters and update download status text and timestamp of radar images
       then: 
         - lvgl.animimg.update:
             id: radar
@@ -606,93 +708,219 @@ online_image:
         - lvgl.widget.refresh: 
             id: radar_ts
     on_error: 
+      # error handling is same as other images - update error count then this download 
+      # will get tried again on next script run
       then:
         - lambda: ++id(radar_errors);
 
+  # Staellite image - only one file every 10 minutes
   - url: "https://google.com/dummy.png"
     id: satellite1
     format: png
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
+      # successful download
       then: 
+        # update the image
         - lvgl.image.update:
             id: satellite
             src: satellite1
+        # High the dowloading icon
         - lvgl.widget.hide: lbl_downloading
+        # reset flags and couters
         - lambda: id(satellite_flag) = 0;
         - lambda: id(satellite_errors) = 0;
+        # update the timestamp text
         - lvgl.widget.refresh: 
             id: sat_ts
     on_error: 
+      # if download error - stop script, update error counter and restart script
       then:
         - script.stop: script_satellite_download    
         - lambda: ++id(satellite_errors);
         - script.execute: script_satellite_download    
 
+# Static images
 image: 
+  # Background image for radar
   - file: "map1b.png"
     id: background_map
     type: RGB565
+  # foreground overlay for radar - place names and location 
   - file: "map1f.png"
     id: foreground_map
     type: RGB565
     transparency: alpha_channel
+  # Background map for statellite image
   - file: "map2.png"
     id: satellite_map
     type: RGB565
     transparency: alpha_channel 
+  # foreground overlay for satellite - borders and coastlines
   - file: "map4.png"
     id: base_map
     type: RGB565
     transparency: alpha_channel 
 
 # All sensors sourced from HA - Ecowitt weather station sensors
-# BOM weather forecast sensors
+# BOM weather forecast sensors using custom template sesnors mostly
+sensor:
+  # wifi
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic" 
+
+  # sun
+  - platform: sun
+    id: sun_elevation
+    type: elevation
+
+  # numeric sensors from BOM
+  - platform: homeassistant
+    id: bomhumidity
+    entity_id: sensor.rutherglen_humidity
+  - platform: homeassistant
+    id: sunrise_next
+    entity_id: sensor.weather_data
+    attribute: sunrise
+  - platform: homeassistant
+    id: sunset_next
+    entity_id: sensor.weather_data
+    attribute: sunset
+
+  # hourly temp forecast from custom template sensor 
+  - platform: homeassistant
+    id: hourlytemp_0
+    entity_id: sensor.weather_data
+    attribute: temperature_0
+  - platform: homeassistant
+    id: hourlytemp_1
+    entity_id: sensor.weather_data
+    attribute: temperature_1
+  - platform: homeassistant
+    id: hourlytemp_2
+    entity_id: sensor.weather_data
+    attribute: temperature_2
+  - platform: homeassistant
+    id: hourlytemp_3
+    entity_id: sensor.weather_data
+    attribute: temperature_3
+  - platform: homeassistant
+    id: hourlytemp_4
+    entity_id: sensor.weather_data
+    attribute: temperature_4
+  - platform: homeassistant
+    id: hourlytemp_5
+    entity_id: sensor.weather_data
+    attribute: temperature_5
+  - platform: homeassistant
+    id: hourlytemp_6
+    entity_id: sensor.weather_data
+    attribute: temperature_6
+  - platform: homeassistant
+    id: hourlytemp_7
+    entity_id: sensor.weather_data
+    attribute: temperature_7
+  - platform: homeassistant
+    id: hourlytemp_8
+    entity_id: sensor.weather_data
+    attribute: temperature_8
+  - platform: homeassistant
+    id: hourlytemp_9
+    entity_id: sensor.weather_data
+    attribute: temperature_9
+  - platform: homeassistant
+    id: hourlytemp_10
+    entity_id: sensor.weather_data
+    attribute: temperature_10
+  - platform: homeassistant
+    id: hourlytemp_11
+    entity_id: sensor.weather_data
+    attribute: temperature_11
+  - platform: homeassistant
+    id: hourlytemp_12
+    entity_id: sensor.weather_data
+    attribute: temperature_12
+  - platform: homeassistant
+    id: hourlytemp_13
+    entity_id: sensor.weather_data
+    attribute: temperature_13
+  - platform: homeassistant
+    id: hourlytemp_14
+    entity_id: sensor.weather_data
+    attribute: temperature_14
+  - platform: homeassistant
+    id: hourlytemp_15
+    entity_id: sensor.weather_data
+    attribute: temperature_15
+  - platform: homeassistant
+    id: hourlytemp_16
+    entity_id: sensor.weather_data
+    attribute: temperature_16
+  - platform: homeassistant
+    id: hourlytemp_17
+    entity_id: sensor.weather_data
+    attribute: temperature_17
+  - platform: homeassistant
+    id: hourlytemp_18
+    entity_id: sensor.weather_data
+    attribute: temperature_18
+  - platform: homeassistant
+    id: hourlytemp_19
+    entity_id: sensor.weather_data
+    attribute: temperature_19
+  - platform: homeassistant
+    id: hourlytemp_20
+    entity_id: sensor.weather_data
+    attribute: temperature_20
+  - platform: homeassistant
+    id: hourlytemp_21
+    entity_id: sensor.weather_data
+    attribute: temperature_21
+  - platform: homeassistant
+    id: hourlytemp_22
+    entity_id: sensor.weather_data
+    attribute: temperature_22
+  - platform: homeassistant
+    id: hourlytemp_23
+    entity_id: sensor.weather_data
+    attribute: temperature_23
+
+
 text_sensor:
-
-# debug sensors
-
+  # debug sensors
   - platform: wifi_info
     ip_address:
-      name: ESP IP Address
-      address_0:
-        name: ESP IP Address 0
-      address_1:
-        name: ESP IP Address 1
-      address_2:
-        name: ESP IP Address 2
-      address_3:
-        name: ESP IP Address 3
-      address_4:
-        name: ESP IP Address 4
+      id: esp_ip_address
     ssid:
-      name: ESP Connected SSID
-    bssid:
-      name: ESP Connected BSSID
+      id: esp_connected_ssid
     mac_address:
-      name: ESP Mac Wifi Address
       id: esp_mac_address
-    scan_results:
-      name: ESP Latest Scan Results
     dns_address:
-      name: ESP DNS Address
-
+      id: esp_dns_address
   - platform: version
     name: "ESPHome Version"
     hide_timestamp: true
 
-# weather sensors
-
+  # weather sensors
+  # Ecowitt weather station outside temp
   - platform: homeassistant
     entity_id: sensor.weather_station_temperature
     id: temp
-
+  # Ecowitt wind direction - this is one of the few sensors that updates on value
+  # as it is fairly dynamic.  The code updates the array with values then updates the wind compass and 
+  # displayed values
   - platform: homeassistant
     entity_id: sensor.wind_direction
     id: wind_dir
     on_value: 
+      # note we do these loops in ! lambda as using yaml loops for more that 10 repeats
+      # causes crashes / buffer overflows
       then:
+        # update array used for compas / wind stick
         - lambda: |-
             static int index=0;
             static int prev_index=29;
@@ -715,15 +943,19 @@ text_sensor:
                 id(maxwind) = id(hist_wind)[i];
               }
             }
+        # calculate coordinates for wind direction indicator - this is drawn in the wind speed sensor
         - lvgl.widget.update:
             id: dir_indicator
             x: !lambda |-
               return  90 + 50 - 6 + (89 * (cos((id(dir)-90)*PI/180)));
             y: !lambda |-
               return  90 + 140 - 6 + (89 * (sin((id(dir)-90)*PI/180)));
+        # clear canvas for wind sticks
         - lvgl.canvas.fill:
             id: wind_stick
             color: BLACK
+        # Draw wind stick - again can use yaml loops becase they don't work.  Use c++ LVGL code
+        # for drawing
         - lambda: |-
             lv_draw_line_dsc_t line_dsc;
             lv_draw_line_dsc_init(&line_dsc);
@@ -732,7 +964,7 @@ text_sensor:
             line_dsc.opa = LV_OPA_COVER;
             line_dsc.round_start = 0;
             line_dsc.round_end = 0;      
-              
+            // loop through array to draw direction / force lines for last 30 readings
             for (int ax = 0; ax < 30; ++ax)  {
               int x1 = 90 + (90 * (cos((id(hist_dir)[ax]-90)*PI/180)));
               int y1 = 90 + (90 * (sin((id(hist_dir)[ax]-90)*PI/180)));
@@ -745,11 +977,13 @@ text_sensor:
               lv_canvas_draw_line(wind_stick, line_points, 2, &line_dsc);
             }
 
+  # Wind speed from Ecowitt,.
   - platform: homeassistant
     entity_id: sensor.wind_speed
     id: wind_speed
     on_value: 
       then:
+        # draw indicator for wind compass, colour based on wind speed
         - lvgl.widget.update:
             id: dir_indicator
             arc_color: !lambda |-
@@ -758,6 +992,7 @@ text_sensor:
               if (speed>11 && speed<=30) return lv_palette_main(LV_PALETTE_GREEN); 
               if (speed>30 && speed<=60) return lv_palette_main(LV_PALETTE_ORANGE); 
               return lv_palette_main(LV_PALETTE_RED); 
+        # Update wind speed value - formatting changes depending on how many leading digits
         - if:
             condition:
               lambda: |-
@@ -775,15 +1010,16 @@ text_sensor:
                     format: "%.0f"
                     args: [atof(x.c_str())]
 
+  # named wind direction from Ecowoitt
   - platform: homeassistant
     entity_id: sensor.named_wind_direction
     id: named_dir
     on_value:
+      # we chose this sensor to perform first update scripts - no particular reasoning why this one chosen
       then: 
         - if:
             condition:
-              not:
-                lambda: return id(first_run);
+              lambda: return id(first_run);
             then: 
               - component.update: templot 
               - script.execute: script_obs
@@ -792,60 +1028,56 @@ text_sensor:
               - script.execute: script_radar_download
               - lambda: id(satellite_flag) = 1;
               - script.execute: script_satellite_download
-              - lambda: id(first_run) = true;
+              - lambda: id(first_run) = false;
         - lvgl.label.update:
             id: dir_text
             text: !lambda return x;
 
+  # Radar image urls plus timestamp of latest image.  Sourced from custom HA template 
+  # that uses Rainviewer.com API
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url0
     id: radar_url0
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: timestamp1
     id: radar_timestamp
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url1
     id: radar_url1
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url2
     id: radar_url2
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url3
     id: radar_url3
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url4
     id: radar_url4
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url5
     id: radar_url5
-
-  - platform: homeassistant
-    entity_id: sensor.template_weather_display_radar
-    attribute: urls
-    id: satellite_url
-
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     id: radar_urls
 
+  # satellite image url and timestamp from HA template / Rainviewer
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: urls
+    id: satellite_url
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: timestamps
     id: satellite_timestamp
 
+  # Ecowitt total rain since midnight - updated real time
   - platform: homeassistant
     entity_id: sensor.rain_accumulation
     id: total_rain
@@ -854,10 +1086,12 @@ text_sensor:
         lvgl.widget.refresh:
           - id: rain_total
 
+  # Ecowitt air pressure (mean sea level adjusted0)
   - platform: homeassistant
     entity_id: sensor.atmospheric_pressure_msl
     id: pressure
 
+  # Ecowitt rain gust - updated real time
   - platform: homeassistant
     entity_id: sensor.wind_gust
     id: gust
@@ -866,283 +1100,251 @@ text_sensor:
         lvgl.widget.refresh:
           - id: wind_gust
 
+  # Mon phase and moorise time - note phase is simply correct icon supplied by HA template sensor
   - platform: homeassistant
     entity_id: sensor.template_weather_display_moon_icon
     id: moon_phase
-
   - platform: homeassistant
     id: moonrise_time
     entity_id: sensor.template_weather_display_moonrise_next
 
+  # Daily forecast text from BOM via HA template sensor
   - platform: homeassistant
     id: forecast0
     entity_id: sensor.template_weather_display_forecast0
     attribute: long_text
-
   - platform: homeassistant
     id: forecasttoday
     entity_id: sensor.rutherglen_short_text_0
-
   - platform: homeassistant
     id: forecast1
     entity_id: sensor.template_weather_display_forecast1
-
   - platform: homeassistant
     id: forecast2
     entity_id: sensor.template_weather_display_forecast2
-
   - platform: homeassistant
     id: forecast3
     entity_id: sensor.template_weather_display_forecast3
-
   - platform: homeassistant
     id: forecast4
     entity_id: sensor.template_weather_display_forecast4
-
   - platform: homeassistant
     id: forecast5
     entity_id: sensor.template_weather_display_forecast5
-
   - platform: homeassistant
     id: forecast6
     entity_id: sensor.template_weather_display_forecast6
               
+  # Daily forecast icon from BOM via HA template sesnor
   - platform: homeassistant
     id: icon0
     entity_id: sensor.template_weather_display_icon0
-          
   - platform: homeassistant
     id: icon1
     entity_id: sensor.template_weather_display_icon1
-   
   - platform: homeassistant
     id: icon2
     entity_id: sensor.template_weather_display_icon2
-
   - platform: homeassistant
     id: icon3
     entity_id: sensor.template_weather_display_icon3
- 
   - platform: homeassistant
     id: icon4
     entity_id: sensor.template_weather_display_icon4
-   
   - platform: homeassistant
     id: icon5
     entity_id: sensor.template_weather_display_icon5
-
   - platform: homeassistant
     id: icon6
     entity_id: sensor.template_weather_display_icon6
 
-  # Hourly icons
-
+  # Hourly icons from BOM via HA template sensor
   - platform: homeassistant
     id: hour_icon0
     entity_id: sensor.template_weather_display_hourly_icon0
-
   - platform: homeassistant
     id: hour_icon1
     entity_id: sensor.template_weather_display_hourly_icon1
-
   - platform: homeassistant
     id: hour_icon2
     entity_id: sensor.template_weather_display_hourly_icon2
- 
   - platform: homeassistant
     id: hour_icon3
     entity_id: sensor.template_weather_display_hourly_icon3
- 
   - platform: homeassistant
     id: hour_icon4
     entity_id: sensor.template_weather_display_hourly_icon4
-
   - platform: homeassistant
     id: hour_icon5
     entity_id: sensor.template_weather_display_hourly_icon5
-
   - platform: homeassistant
     id: hour_icon6
     entity_id: sensor.template_weather_display_hourly_icon6
-
   - platform: homeassistant
     id: hour_icon7
     entity_id: sensor.template_weather_display_hourly_icon7
-
   - platform: homeassistant
     id: hour_icon8
     entity_id: sensor.template_weather_display_hourly_icon8
-
   - platform: homeassistant
     id: hour_icon9
     entity_id: sensor.template_weather_display_hourly_icon9
-
   - platform: homeassistant
     id: hour_icon10
     entity_id: sensor.template_weather_display_hourly_icon10
-
   - platform: homeassistant
     id: hour_icon11
     entity_id: sensor.template_weather_display_hourly_icon11
-
   - platform: homeassistant
     id: hour_icon12
     entity_id: sensor.template_weather_display_hourly_icon12
-
   - platform: homeassistant
     id: hour_icon13
     entity_id: sensor.template_weather_display_hourly_icon13
-
   - platform: homeassistant
     id: hour_icon14
     entity_id: sensor.template_weather_display_hourly_icon14
-
   - platform: homeassistant
     id: hour_icon15
     entity_id: sensor.template_weather_display_hourly_icon15
-
   - platform: homeassistant
     id: hour_icon16
     entity_id: sensor.template_weather_display_hourly_icon16
-
   - platform: homeassistant
     id: hour_icon17
     entity_id: sensor.template_weather_display_hourly_icon17
-
   - platform: homeassistant
     id: hour_icon18
     entity_id: sensor.template_weather_display_hourly_icon18
-
   - platform: homeassistant
     id: hour_icon19
     entity_id: sensor.template_weather_display_hourly_icon19
-
   - platform: homeassistant
     id: hour_icon20
     entity_id: sensor.template_weather_display_hourly_icon20
-
   - platform: homeassistant
     id: hour_icon21
     entity_id: sensor.template_weather_display_hourly_icon21
-
   - platform: homeassistant
     id: hour_icon22
     entity_id: sensor.template_weather_display_hourly_icon22
-
   - platform: homeassistant
     id: hour_icon23
     entity_id: sensor.template_weather_display_hourly_icon23
         
+  # Feels like temp from HACs custom sensor
   - platform: homeassistant
     id: fl
     entity_id: sensor.rutherglen_temp_feels_like
 
+  # Timestamps for hourly forecast
   - platform: homeassistant
     id: datetime_0
     entity_id: sensor.template_weather_display_hourly_time0
-
   - platform: homeassistant
     id: datetime_1
     entity_id: sensor.template_weather_display_hourly_time1
-
   - platform: homeassistant
     id: datetime_2
     entity_id: sensor.template_weather_display_hourly_time2
-
   - platform: homeassistant
     id: datetime_3
     entity_id: sensor.template_weather_display_hourly_time3
-
   - platform: homeassistant
     id: datetime_4
     entity_id: sensor.template_weather_display_hourly_time4
-
   - platform: homeassistant
     id: datetime_5
     entity_id: sensor.template_weather_display_hourly_time5
-
   - platform: homeassistant
     id: datetime_6
     entity_id: sensor.template_weather_display_hourly_time6
-
   - platform: homeassistant
     id: datetime_7
     entity_id: sensor.template_weather_display_hourly_time7
-
   - platform: homeassistant
     id: datetime_8
     entity_id: sensor.template_weather_display_hourly_time8
-
   - platform: homeassistant
     id: datetime_9
     entity_id: sensor.template_weather_display_hourly_time9
-
   - platform: homeassistant
     id: datetime_10
     entity_id: sensor.template_weather_display_hourly_time10
-
   - platform: homeassistant
     id: datetime_11
     entity_id: sensor.template_weather_display_hourly_time11
-
   - platform: homeassistant
     id: datetime_12
     entity_id: sensor.template_weather_display_hourly_time12
-
   - platform: homeassistant
     id: datetime_13
     entity_id: sensor.template_weather_display_hourly_time13
-
   - platform: homeassistant
     id: datetime_14
     entity_id: sensor.template_weather_display_hourly_time14
-
   - platform: homeassistant
     id: datetime_15
     entity_id: sensor.template_weather_display_hourly_time15
-
   - platform: homeassistant
     id: datetime_16
     entity_id: sensor.template_weather_display_hourly_time16
-
   - platform: homeassistant
     id: datetime_17
     entity_id: sensor.template_weather_display_hourly_time17
-
   - platform: homeassistant
     id: datetime_18
     entity_id: sensor.template_weather_display_hourly_time18
-
   - platform: homeassistant
     id: datetime_19
     entity_id: sensor.template_weather_display_hourly_time19
-
   - platform: homeassistant
     id: datetime_20
     entity_id: sensor.template_weather_display_hourly_time20
-
   - platform: homeassistant
     id: datetime_21
     entity_id: sensor.template_weather_display_hourly_time21
-
   - platform: homeassistant
     id: datetime_22
     entity_id: sensor.template_weather_display_hourly_time22
-
   - platform: homeassistant
     id: datetime_23
     entity_id: sensor.template_weather_display_hourly_time23
 
+  # preformated sunrise and sunset times from HA template sesnor
   - platform: homeassistant
     id: sunrise_next_text
     entity_id: sensor.weather_data
     attribute: sunrise_txt
-
   - platform: homeassistant
     id: sunset_next_text
     entity_id: sensor.weather_data
     attribute: sunset_txt
     
+  # Text sensor for controlling state of icons on lights page
+  - platform: homeassistant
+    id: light1_remote_light
+    entity_id: light.office_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light1
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light1
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+
 font:
   # Forecast text
   - file: "fonts/calibri.ttf"
@@ -1156,6 +1358,7 @@ font:
        'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
        'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
        'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  # Custom font file for weather screen static icons
   - file: "fonts/Forecast.ttf"
     id: forecast_24
     size: 36
@@ -1228,7 +1431,6 @@ font:
       "\uF07D",
       "" # wind
       ]
-
   - file: "fonts/weathericons-regular-webfont.ttf"
     id: weather_36
     size: 36
@@ -1261,6 +1463,7 @@ font:
       "" # wind
       ]
 
+  # Material Design icons from github repository
   - file: 'https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf'
     id: mdi_42
     size: 42
@@ -1296,171 +1499,36 @@ font:
        'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
        'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
     
-# State is negative after sunset and before sunrise  
-sensor:
 
-  # wifi
-  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
-    name: "WiFi Signal dB"
-    id: wifi_signal_db
-    update_interval: 60s
-    entity_category: "diagnostic" 
-
-  # sun
-
-  - platform: sun
-    id: sun_elevation
-    type: elevation
-
-  - platform: homeassistant
-    id: bomhumidity
-    entity_id: sensor.rutherglen_humidity
-              
-  - platform: homeassistant
-    id: sunrise_next
-    entity_id: sensor.weather_data
-    attribute: sunrise
-
-  - platform: homeassistant
-    id: sunset_next
-    entity_id: sensor.weather_data
-    attribute: sunset
-
-# hourly temp forecast
-
-  - platform: homeassistant
-    id: hourlytemp_0
-    entity_id: sensor.weather_data
-    attribute: temperature_0
-
-  - platform: homeassistant
-    id: hourlytemp_1
-    entity_id: sensor.weather_data
-    attribute: temperature_1
-
-  - platform: homeassistant
-    id: hourlytemp_2
-    entity_id: sensor.weather_data
-    attribute: temperature_2
-
-  - platform: homeassistant
-    id: hourlytemp_3
-    entity_id: sensor.weather_data
-    attribute: temperature_3
-
-  - platform: homeassistant
-    id: hourlytemp_4
-    entity_id: sensor.weather_data
-    attribute: temperature_4
-
-  - platform: homeassistant
-    id: hourlytemp_5
-    entity_id: sensor.weather_data
-    attribute: temperature_5
-
-  - platform: homeassistant
-    id: hourlytemp_6
-    entity_id: sensor.weather_data
-    attribute: temperature_6
-
-  - platform: homeassistant
-    id: hourlytemp_7
-    entity_id: sensor.weather_data
-    attribute: temperature_7
-
-  - platform: homeassistant
-    id: hourlytemp_8
-    entity_id: sensor.weather_data
-    attribute: temperature_8
-
-  - platform: homeassistant
-    id: hourlytemp_9
-    entity_id: sensor.weather_data
-    attribute: temperature_9
-
-  - platform: homeassistant
-    id: hourlytemp_10
-    entity_id: sensor.weather_data
-    attribute: temperature_10
-
-  - platform: homeassistant
-    id: hourlytemp_11
-    entity_id: sensor.weather_data
-    attribute: temperature_11
-
-  - platform: homeassistant
-    id: hourlytemp_12
-    entity_id: sensor.weather_data
-    attribute: temperature_12
-
-  - platform: homeassistant
-    id: hourlytemp_13
-    entity_id: sensor.weather_data
-    attribute: temperature_13
-
-  - platform: homeassistant
-    id: hourlytemp_14
-    entity_id: sensor.weather_data
-    attribute: temperature_14
-
-  - platform: homeassistant
-    id: hourlytemp_15
-    entity_id: sensor.weather_data
-    attribute: temperature_15
-
-  - platform: homeassistant
-    id: hourlytemp_16
-    entity_id: sensor.weather_data
-    attribute: temperature_16
-
-  - platform: homeassistant
-    id: hourlytemp_17
-    entity_id: sensor.weather_data
-    attribute: temperature_17
-
-  - platform: homeassistant
-    id: hourlytemp_18
-    entity_id: sensor.weather_data
-    attribute: temperature_18
-
-  - platform: homeassistant
-    id: hourlytemp_19
-    entity_id: sensor.weather_data
-    attribute: temperature_19
-
-  - platform: homeassistant
-    id: hourlytemp_20
-    entity_id: sensor.weather_data
-    attribute: temperature_20
-
-  - platform: homeassistant
-    id: hourlytemp_21
-    entity_id: sensor.weather_data
-    attribute: temperature_21
-
-  - platform: homeassistant
-    id: hourlytemp_22
-    entity_id: sensor.weather_data
-    attribute: temperature_22
-
-  - platform: homeassistant
-    id: hourlytemp_23
-    entity_id: sensor.weather_data
-    attribute: temperature_23
-
-number:
-  - platform: template
-    id: position
-    name: position
-    min_value: 0
-    max_value: 360
-    step: 1
-    optimistic: True
-    initial_value: 0
-
+# LVGL starts here!
 lvgl:
+  # idle time only used for timeout on status pop-up.  Main screen timeout handled by
+  # presence sensor
+  on_idle:
+    - timeout: 15s
+      # if no interaction after 15 seconds, check to see if pop-up display and hide it if so
+      # update flag that lets us know it is shgowing as I see no code to detect if obj is visible or not.
+      then:
+        if:
+          condition:
+            - lambda: return id(status_hidden) == false;
+          then:
+            - lvgl.widget.hide: status
+            - lambda: id(status_hidden) = true;
+
+  # Just the one display - at 800 x 480 that is pleny for memory to handle 
   displays:
     - my_display
+
+  # change default checked for buttons - we will use icon state to indicate checked status
+  theme:
+    button:
+      bg_color: 0x2F8CD8
+      checked: 
+        bg_color: 0x2F8C00
+
+  # Style only used for header and foot and forecast text on weather page.  All other pages / etc
+  # use explicit styles or defaults
   style_definitions:
     - id: header_footer
       bg_color: 0x2F8CD8
@@ -1492,9 +1560,12 @@ lvgl:
       border_color: 0x0077b3
       text_color: 0x000000
       text_font: weather_24
+
+  # Top layer holds nav bar and title bar plus hidden settings/status pop-up
   top_layer:
     widgets:
       - obj:
+          # Status and settings pop-up - starts hidden 
           id: status
           align: CENTER
           width: 700
@@ -1505,19 +1576,235 @@ lvgl:
             type: GRID # split the rows and the columns proportionally
             pad_row: 6
             pad_column: 8
-            grid_columns: [FR(90), FR(10)]
+            grid_columns: [FR(20), FR(30), FR(40), FR(10)]
             grid_rows: [FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1)] 
+          # Status information from ESPHome wifi and diagnostic / wifi sensors
           widgets:
             - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text_decor: UNDERLINE
+                text: "Status"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 0
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "IP Address:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 1
+            - label: 
+                id: esp_ip
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_ip_address).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 1
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Connected SSID:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 2
+            - label: 
+                id: esp_ssid
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_connected_ssid).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 2
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Wifi signal dB:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 3
+            - label: 
+                id: esp_wifi_db
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda |-
+                        char h[20];
+                        snprintf(h, sizeof(h), "%.0f dB", id(wifi_signal_db).state);
+                        return h;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 3
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "DNS address:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 4
+            - label: 
+                id: esp_dns
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_dns_address).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 4
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "MAC Address:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 5
+            - label: 
                 id: mac
                 align: CENTER
                 text_align: CENTER
                 text_color: BLACK
-                pad_all: 6
                 text: !lambda return id(esp_mac_address).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 5
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Boot time:"
+                pad_top: 6
                 grid_cell_column_pos: 0
-                grid_cell_row_pos: 0                
+                grid_cell_row_pos: 7
+            - label: 
+                id: lbl_boot_time
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: "--"
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 7
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "API connect time:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 8
+            - label: 
+                id: lbl_api_time
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: "--"
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 8
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text_decor: UNDERLINE
+                text: "Settings"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 0
+            - label:
+              # Switch defined above that toggles if weather creen shown on wake or last shown screen
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Show Home screen on wake:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 1
+            - switch:
+                id: home_on_wake
+                align: CENTER
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 1
+            - label:
+              # Switch to enable / disable wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Wake on presence:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 2
+            - switch:
+                id: wake_on_presence
+                align: CENTER
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 2
+            - label:
+              # button which if clicked triggers sleep mode
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Press to sleep now:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 6
+            - button:
+                id: press_to_sleep
+                align: CENTER
+                pad_top: 6
+                height: 30
+                width: 60
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 6
+                widgets:
+                  - label:
+                      align: CENTER
+                      text: "Sleep"
+                on_click:
+                  - lvgl.widget.hide: status
+                  - lambda: id(status_hidden) = true;                  
+                  - delay: 0.5s
+                  - switch.turn_off: backlight
+                  - lvgl.pause:
+                      show_snow: true
+            - label:
+              # button that if clicked triggers restart via ESPHome restart_switch:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Press for restart:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 8
+            - button:
+                id: press_to_restart
+                align: CENTER
+                checkable: TRUE
+                pad_top: 6
+                height: 30
+                width: 60
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 8
+                widgets:
+                  - label:
+                      align: CENTER
+                      text: "Restart"
+                on_change:
+                  switch.turn_on: restart_switch
+
       - obj:
+        # Header object - not page title is overwirtten by each page load
           align: TOP_MID
           styles: header_footer
           widgets:
@@ -1529,6 +1816,7 @@ lvgl:
                 text_color: 0xFFFFFF
                 pad_all: 6
             - label:
+              # Status icon indicating connection to HA API is established
                 text: "\uF1EB"
                 id: lbl_hastatus
                 hidden: true
@@ -1539,6 +1827,7 @@ lvgl:
                 text_color: 0xFFFFFF
                 pad_all: 6
             - label:
+              # Status icon shown only when satellite and radar images are downloading
                 text: "\uF019"
                 id: lbl_downloading
                 hidden: true
@@ -1550,6 +1839,7 @@ lvgl:
                 text_color: RED
                 pad_all: 6
             - label:
+              # date and time 
                 id: lbl_datetime
                 align: top_left
                 x: 0
@@ -1559,11 +1849,34 @@ lvgl:
                 pad_all: 6    
                 on_press:
                   then: 
+                    # date & time label is a "hidden" button to display the status and settings pop-up
                     - lvgl.widget.show: status
-                    - lvgl.widget.refresh: mac
+                    # populate the diagnostics as these won't be written at startup
+                    - lvgl.widget.refresh: 
+                        - id: mac
+                        - id: esp_ip
+                        - id: esp_ssid
+                        - id: esp_wifi_db
+                        - id: esp_dns
+                    - lvgl.label.update:
+                        id: lbl_boot_time
+                        text:
+                          time_format: "%c"
+                          time: !lambda return id(boot_time);
+                    - lvgl.label.update:
+                        id: lbl_api_time
+                        text:
+                          time_format: "%c"
+                          time: !lambda return id(api_connect_time);
+                    - lambda: id(status_hidden) = false;
                 on_long_press:
-                  lvgl.widget.hide: status
+                  then:
+                    # Long press will close settings and status pop-up
+                    - lvgl.widget.hide: status
+                    - lambda: id(status_hidden) = true;
+
       - buttonmatrix:
+        # Footer object - just navigation buttons and home button
           align: bottom_mid
           styles: header_footer
           pad_all: 0
@@ -1572,6 +1885,8 @@ lvgl:
           items:
             styles: header_footer
           rows:
+            # not that trigger point to script rather than just doing next page action
+            # because we originally were going to do other processing
             - buttons:
               - id: page_prev
                 text: "\uF053"
@@ -1588,7 +1903,10 @@ lvgl:
                 on_press:
                   then:
                     - script.execute: page_move_next
+  
+  # Page definitions - note that with LVGL page order in yaml is the same as compiled code
   pages:
+    # Weather information sourced from Ecowitt and BOM
     - id: weather_page
       on_load:
         then: 
@@ -1596,6 +1914,7 @@ lvgl:
             id: pagetitle
             text: "Rutherglen Weather"
       bg_color: 0x000000
+      # Swipe triggers for page navigation - duplicates same as buttons
       on_swipe_right:
         then:
           - script.execute: page_move_prev
@@ -1604,13 +1923,14 @@ lvgl:
           - script.execute: page_move_next  
       widgets:
     # Wind Rose
+        # Canvas used for drawing wind history - behind all other objects on this page
         - canvas:
             id: wind_stick
             x: 50
             y: 140
             height: 180
             width: 180
-       
+        # Circle used for wind compass
         - arc:
             x: 50
             y: 140
@@ -1622,6 +1942,7 @@ lvgl:
             end_angle: 360
             adjustable: false 
             arc_color: WHITE   
+        # "Filled" arc used for pointer for wind compass
         - arc:
             id: dir_indicator
             x: 10
@@ -1633,6 +1954,7 @@ lvgl:
             height: 12
             width: 12
             arc_color: BLUE
+        # Cardinal directions labels
         - label:
             x: 50
             y: 110
@@ -1660,7 +1982,8 @@ lvgl:
             y: 221
             text_font: calibri_19
             text_color: RED
-            text:  "W"             
+            text:  "W"      
+        # Label for named wind direction       
         - label:
             id: dir_text
             x: 50
@@ -1670,6 +1993,7 @@ lvgl:
             text_align: CENTER
             width: 180
             text: "-"
+        # Units label which appers below wind speed
         - label:
             x: 50
             y: 250
@@ -1678,6 +2002,7 @@ lvgl:
             text_align: CENTER
             width: 180
             text: "km/h"
+        # Wind speed
         - label:
             id: speed_text
             x: 50
@@ -1688,8 +2013,8 @@ lvgl:
             width: 180
             text: "-"
 
-# Observations
-
+    # Observations
+        # Icon for current day weather - top left of display
         - label:
             id: icon_today
             x: 20
@@ -1697,6 +2022,7 @@ lvgl:
             text_font: weather_36
             text_color: WHITE
             text: !lambda return id(icon0).state;
+        # Current temperature from Ecowitt (not BOM)
         - label: 
             id: current_temp
             x: 87
@@ -1704,6 +2030,7 @@ lvgl:
             text_font: calibri_25
             text_color: WHITE
             text: !lambda return (id(temp).state + " °C").c_str();
+        # BOM short "forecast" for today
         - label:
             id: short_today
             x: 87
@@ -1713,6 +2040,7 @@ lvgl:
             text: !lambda return id(forecasttoday).state;
             height: 25
             width: 135
+        # Feels like icon and value
         - label: 
             id: feels_like_icon
             x: 235
@@ -1727,6 +2055,7 @@ lvgl:
             text_font: calibri_17
             text_color: WHITE
             text: !lambda return (id(fl).state + " °C").c_str();
+        # Rain guage icon and total since midnight
         - label: 
             id: rain_total_icon
             x: 235
@@ -1741,6 +2070,7 @@ lvgl:
             text_font: calibri_17
             text_color: WHITE
             text: !lambda return (id(total_rain).state + " mm").c_str();
+        # atmospheric pressure icon and value
         - label: 
             id: atmo_pressure_icon
             x: 235
@@ -1755,6 +2085,7 @@ lvgl:
             text_font: calibri_17
             text_color: WHITE
             text: !lambda return (id(pressure).state + " hPa").c_str();
+        # Wind gust icon and value from Ecowitt
         - label: 
             id: wind_gust_icon
             x: 235
@@ -1769,6 +2100,7 @@ lvgl:
             text_font: calibri_17
             text_color: WHITE
             text: !lambda return (id(gust).state + " km/h").c_str();
+        # Next sunrise icon and value
         - label: 
             id: sunrise_icon
             x: 360
@@ -1783,6 +2115,7 @@ lvgl:
             text_font: calibri_17
             text_color: WHITE
             text: !lambda return id(sunrise_next_text).state;
+        # Next sunset icon and value
         - label: 
             id: sunset_icon
             x: 360
@@ -1797,6 +2130,7 @@ lvgl:
             text_font: calibri_17
             text_color: WHITE
             text: !lambda return id(sunset_next_text).state;
+        # Humidity icon and value from Ecowitt
         - label: 
             id: humidity_icon
             x: 360
@@ -1814,6 +2148,7 @@ lvgl:
                     char h[20];
                     snprintf(h, sizeof(h), "%.0f %%", id(bomhumidity).state);
                     return h;
+        # Moon phase icon from HA sensor and value
         - label: 
             id: moon_phase_icon
             x: 360
@@ -1829,16 +2164,17 @@ lvgl:
             text_color: WHITE
             text: !lambda return id(moonrise_time).state;
 
-# temperature plot
-
+    # temperature plot
+        # Temperature graph showing BOM and Ecowitt temp plot for last 6 hours
+        # Image sourced from HA using Puppet add-on
         - image: 
             id: templot_img
             x: 255
             y: 150
             src: templot
 
-# Hourly forecast
-
+    # Hourly forecast
+        # Forcast data for 24 hours, in scrolling grid
         - obj:
             id: hourly_forecast
             x: 15
@@ -1853,6 +2189,7 @@ lvgl:
               type: GRID
               grid_rows: [14, 37, 13]
               grid_columns: [45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45] 
+            # Time, condition icon and temp sourced from BOM via template sensor
             widgets: 
               - label: 
                   id: hour0_time
@@ -2598,8 +2935,10 @@ lvgl:
                     return h;
                   text_font: calibri_13
 
-# Forecast
-
+    # Forecast
+        # 7 day forecast sourced from BOM
+        # day 0 (today) uses full long forecast data (more than 255 chars) from 
+        # BOM sensor attribute
         - label:
             id: forecast_text_0
             x: 550
@@ -2669,7 +3008,6 @@ lvgl:
         - label:
             id: forecast_text_6
             x: 550
-
             y: 410
             height: 40
             width: 240
@@ -2678,6 +3016,7 @@ lvgl:
             text: !lambda return id(forecast6).state;
             styles: forecast_text
             text_color: WHITE
+        # Forecast icons
         - label:
             id: forecast_icon_0
             x: 500
@@ -2748,6 +3087,7 @@ lvgl:
             text: !lambda return id(icon6).state;
             styles: forecast_glyph
             text_color: WHITE
+        # borders for forecast data
         - line:
             points: 
               - 520, 176
@@ -2790,8 +3130,8 @@ lvgl:
               - 490, 445
             line_color: LIGHTBLUE
             line_width: 2
-            
-
+    
+    # Radar and satellite
     - id: radar_page
       on_load:
         then: 
@@ -2805,13 +3145,16 @@ lvgl:
       on_swipe_left:
         then:
           - script.execute: page_move_next  
-
+      # Map images - there is room on this page for more data but at the moment just 2 images
       widgets:
+        # background static image matching zoom and location of radar images
         - image: 
             id: map1
             x: 90
             y: 110
             src: background_map
+        # middle layer is animimg made up of downloaded radra images, radar5 is oldest, radar0
+        # is newest 
         - animimg: 
             id: radar
             x: 90
@@ -2819,26 +3162,31 @@ lvgl:
             src: [ radar5, radar4, radar3, radar2, radar1, radar0 ]
             duration: 6000ms
             auto_start: false
+        # Top overlay is major town locations and names
         - image: 
             id: map1f
             x: 90
             y: 110
-            src: foreground_map          
+            src: foreground_map
+        # background static map of SE australia - matches satellite zoom and location
         - image:
             id: basemap
             x: 454
             y: 110
             src: base_map
+        # middle layer is IR satellite view downloaded from Rainviewer
         - image:
             id: satellite
             x: 454
             y: 110
             src: satellite1
+        # top overlay is state borders and coastlines - visible over cloud layers
         - image: 
             id: map2
             x: 454
             y: 110
             src: satellite_map
+        # Headings and timestam, status data labels
         - label:
             x: 90
             y: 90
@@ -2883,6 +3231,9 @@ lvgl:
             text_align: LEFT
             text: !lambda return id(satellite_timestamp).state;
 
+    # Page for light control - some spare buttons
+    # yaml is mostly copied drom the LVGL Tips & Tricks page "Toggle state icon button"
+    # therfe may be a way of making this less "bulky" - for future date
     - id: lights_page
       on_load:
         then: 
@@ -2898,20 +3249,24 @@ lvgl:
           - script.execute: page_move_next  
 
       widgets:
-        - obj: # a properly placed coontainer object for all these controls
+        # grid layout object for all buttons
+        - obj: 
             align: CENTER
             width: 800
             height: 400
             pad_all: 6
             bg_opa: TRANSP
             border_opa: TRANSP
-            layout: # enable the GRID layout for the children widgets
-              type: GRID # split the rows and the columns proportionally
+            # 4 x 3 grid for buttons - makes them big enough to display both icon and label
+            layout: 
+              type: GRID 
               pad_row: 6
               pad_column: 8
               grid_columns: [FR(1), FR(1), FR(1), FR(1)]
               grid_rows: [FR(1), FR(1), FR(1)] 
             widgets:
+              # buttons - same code for all differe onl in icon (group or single) and label
+              # plus whatever the code controls
               - button:
                   id: light1
                   grid_cell_column_pos: 0
@@ -2920,10 +3275,21 @@ lvgl:
                   grid_cell_y_align: STRETCH
                   widgets:
                     - label:
-                        id: cov_up_east
+                        id: icon_light1
                         align: CENTER
                         text_font: mdi_42
                         text: "\U000F0336"
+                    - label:
+                        id: lbl_light1
+                        align_to: 
+                          id: icon_light1
+                          align: OUT_BOTTOM_MID
+                        text: "Office"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.office_lights
               - button:
                   id: light2
                   grid_cell_column_pos: 0
@@ -2948,7 +3314,6 @@ lvgl:
                         align: CENTER
                         text_font: mdi_42
                         text: "\U000F0336"
-
               - button:
                   id: light4
                   grid_cell_column_pos: 1
@@ -2982,7 +3347,6 @@ lvgl:
                         id: cov_down_south
                         align: CENTER
                         text: "\U000F0045"
-
               - button:
                   id: light7
                   grid_cell_column_pos: 2
@@ -3016,7 +3380,6 @@ lvgl:
                         id: cov_down_west
                         align: CENTER
                         text: "\U000F0045"
-
               - button:
                   id: light10
                   grid_cell_column_pos: 3
