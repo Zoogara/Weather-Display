@@ -9,6 +9,15 @@ esphome:
     board_build.esp-idf.memory_type: qio_opi 
     board_upload.maximum_ram_size: 524288 
     board_build.flash_size: 8MB 
+  on_boot: 
+    then:
+      # restore values for start and end time for presence sensor wake
+      - lvgl.dropdown.update:
+          id: wake_end_time
+          selected_index: !lambda return id(presence_end_index);
+      - lvgl.dropdown.update:
+          id: wake_start_time
+          selected_index: !lambda return id(presence_start_index);
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -26,6 +35,9 @@ esp32:
 psram:
   mode: octal
   speed: 80MHz
+
+web_server:
+  include_internal: True
 
 ch422g:
   - id: io_ex
@@ -50,7 +62,7 @@ ota:
     password: "8f03e50909721af0db102dcd689f88ea"
 
 logger:
-  level: ERROR
+  level: DEBUG
 
 # API connect / disconnect toggles status icon on heading bar
 api:
@@ -94,6 +106,12 @@ switch:
   - platform: lvgl
     widget: wake_on_presence
     id: sw_wake_on_presence
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Toggles timer to turn off prtesence sensor
+  - platform: lvgl
+    widget: enable_timer
+    id: sw_enable_timer
     restore_mode: RESTORE_DEFAULT_OFF
 
 binary_sensor:
@@ -281,6 +299,34 @@ time:
         minutes: /20
         then: 
           - script.execute: script_days
+
+datetime:
+  - platform: template
+    id: presence_end_time
+    type: TIME
+    optimistic: True
+    initial_value: "22:00"
+    restore_value: True
+    on_time:
+      then:
+        if:
+          condition:
+            - switch.is_on: sw_enable_timer
+          then:
+            - switch.turn_off: sw_wake_on_presence
+  - platform: template
+    id: presence_start_time
+    type: TIME
+    optimistic: True
+    initial_value: "8:00"
+    restore_value: True
+    on_time:
+      then:
+        if:
+          condition:
+            - switch.is_on: sw_enable_timer
+          then:
+            - switch.turn_on: sw_wake_on_presence
 
 script:
   # update all observation fields - called on wake and every minute
@@ -591,6 +637,19 @@ globals:
   - id: status_hidden
     type: bool
     initial_value: "true"
+  # array for presence sensor activation times, must match lvgl dropdowns
+  - id: time_array
+    type: std::vector<std::string>
+    initial_value: '{"18:00:00", "19:00:00", "20:00:00", "21:00:00", "22:00:00", "23:00:00", "0:00:00", "1:00:00", "2:00:00", "3:00:00", "4:00:00", "5:00:00", "6:00:00", "7:00:00", "8:00:00"}'
+  # storage for start and end times of presence checking
+  - id: presence_end_index
+    type: int
+    initial_value: "0"
+    restore_value: True
+  - id: presence_start_index
+    type: int
+    initial_value: "11"
+    restore_value: True
 
 # http_request block required for online_image: - note the watchdog timeout needs to longer 
 # than the timeout: value - this prevents rebouts when http_request: blocks EVERYTHING ^&%^&%%$!!
@@ -1820,7 +1879,7 @@ lvgl:
             type: GRID # split the rows and the columns proportionally
             pad_row: 6
             pad_column: 8
-            grid_columns: [FR(20), FR(30), FR(40), FR(10)]
+            grid_columns: [FR(20), FR(30), FR(37), FR(13)]
             grid_rows: [FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1)] 
           # Status information from ESPHome wifi and diagnostic / wifi sensors
           widgets:
@@ -1990,10 +2049,110 @@ lvgl:
                 grid_cell_row_pos: 2
             - switch:
                 id: wake_on_presence
-                align: CENTER
+                align: RIGHT_MID
                 pad_top: 6
                 grid_cell_column_pos: 3
                 grid_cell_row_pos: 2
+            - label:
+              # Switch (checkbox) to enable / disable timer for wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Enable presence timer:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 3
+            - checkbox:
+                id: enable_timer
+                align: CENTER
+                pad_top: 6
+                text: ""
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 3
+            - label:
+              # Time select for wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Presnce turn off time:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 4
+            - dropdown:
+                id: wake_end_time
+                align: CENTER
+                width: 80
+                # note these options must match global variable id(time_array) 
+                options:
+                  - "18:00"
+                  - "19:00"
+                  - "20:00"
+                  - "21:00"
+                  - "22:00"
+                  - "23:00"
+                  - "0:00"
+                  - "1:00"
+                  - "2:00"
+                  - "3:00"
+                  - "4:00"
+                  - "5:00"
+                  - "6:00"
+                  - "7:00"
+                  - "8:00"
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 4
+                on_value:
+                  then:
+                    # set value of datetime object that will be used to switch off presence
+                    # store in global for restoration at boot
+                    - lambda: |-
+                        auto call = id(presence_end_time).make_call();
+                        call.set_time(id(time_array)[x].c_str());
+                        call.perform();
+                        id(presence_end_index) = x;
+            - label:
+              #  Time select for wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Presence turn on time:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 5
+            - dropdown:
+                id: wake_start_time
+                align: CENTER
+                width: 80
+                # note these options must match global variable id(time_array) 
+                options:
+                  - "18:00"
+                  - "19:00"
+                  - "20:00"
+                  - "21:00"
+                  - "22:00"
+                  - "23:00"
+                  - "0:00"
+                  - "1:00"
+                  - "2:00"
+                  - "3:00"
+                  - "4:00"
+                  - "5:00"
+                  - "6:00"
+                  - "7:00"
+                  - "8:00"
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 5
+                on_value:
+                  then:
+                    # set value of datetime object that will be used to switch on presence
+                    # store in global for restoration at boot                    
+                    - lambda: |-
+                        auto call = id(presence_start_time).make_call();
+                        call.set_time(id(time_array)[x].c_str());
+                        call.perform();
+                        id(presence_start_index) = x;
             - label:
               # button which if clicked triggers sleep mode
                 align: CENTER
@@ -2002,15 +2161,15 @@ lvgl:
                 text: "Press to sleep now:"
                 pad_top: 6
                 grid_cell_column_pos: 2
-                grid_cell_row_pos: 6
+                grid_cell_row_pos: 7
             - button:
                 id: press_to_sleep
                 align: CENTER
                 pad_top: 6
                 height: 30
-                width: 60
+                width: 80
                 grid_cell_column_pos: 3
-                grid_cell_row_pos: 6
+                grid_cell_row_pos: 7
                 widgets:
                   - label:
                       align: CENTER
@@ -2037,7 +2196,7 @@ lvgl:
                 checkable: TRUE
                 pad_top: 6
                 height: 30
-                width: 60
+                width: 80
                 grid_cell_column_pos: 3
                 grid_cell_row_pos: 8
                 widgets:
