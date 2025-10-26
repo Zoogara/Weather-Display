@@ -570,12 +570,18 @@ script:
                 id(satellite_flag) = 0;
                 id(satellite_errors) = 0;
 
-  # Page selection scripts - only here as placeholders in case any processing require on page change
+  # Page selection scripts - any code need on page_prev or page_next can go here
   - id: page_move_prev
     then:
+      # Call to lv_indev_wait_release(lv_indev_get_act()) cancels any touch related 
+      # actions (press, click etc) that may be detected as part of the swipe guesture
+      # see https://github.com/esphome/feature-requests/issues/3059
+      - lambda: 'lv_indev_wait_release(lv_indev_get_act());'
       - lvgl.page.previous:
+
   - id: page_move_next
     then:
+      - lambda: 'lv_indev_wait_release(lv_indev_get_act());' 
       - lvgl.page.next:
 
 # Sun required for sun elevation sensor used for day/night comparisons
@@ -3660,6 +3666,8 @@ lvgl:
             pad_all: 6
             bg_opa: TRANSP
             border_opa: TRANSP
+            # press_lok ignores triggers if focus moves off button, e.g a swipe guesture
+            press_lock: FALSE
             # 4 x 3 grid for buttons - makes them big enough to display both icon and label
             layout: 
               type: GRID 
