@@ -21,6 +21,20 @@ esphome:
       - lvgl.dropdown.update:
           id: wake_start_time
           selected_index: !lambda return id(presence_start_index);
+      # The screen is normally switched off by the presence sensor changing to OFF.  After a restart the
+      # sensor is already OFF and never changes, so the screen would stay on until someone walks past.
+      # Once things have settled, do the same check as the presence sensor's "off" branch.
+      - delay: 30s
+      - if:
+          condition:
+            - binary_sensor.is_off: presence_sensor
+            - lvgl.is_idle:
+                timeout: 5s
+          then:
+            - logger.log: "LVGL is idle (after boot)"
+            - switch.turn_off: backlight
+            - lvgl.pause:
+                show_snow: true
 
 esp32:
   board: esp32-s3-devkitc-1
