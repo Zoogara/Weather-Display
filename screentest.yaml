@@ -1,4 +1,7 @@
 # System parameters inc network, hardware and api
+# note platformio_options and the board definition 
+# weree copied directly from a HA forum post - I fixed 
+# one error (flash size) but others I copied verbatim
 
 esphome:
   name: screentest
@@ -85,6 +88,11 @@ api:
 
 switch:
   # Backlight on I/O extender - no PWM so on/off only
+  # Note there is way to truen on dimming for this panel
+  # see example in https://github.com/Zoogara/Calendar-read-only-waveshare-s3-lcd-touch-7
+  # for the required hardware changes - I haven't 
+  # implemented in ESPHome
+  
   - platform: gpio
     name: "Backlight"
     pin: 
@@ -267,7 +275,7 @@ time:
               text: 
                 time_format: "%H:%M - %a %d %b"
                 time: my_time
-      # Download radar - using timer means script doesn't block
+      # Download radar - using timer means script doesn't block (maybe)
       # Only run script if flag is set and script not already running
       # This will only run when the on_time: minutes: 1, 11, 21, 31, 41, 51 has run first
       # i.e. this runs every 12 secs from the time the main script runs until the radar images are all downloaded.
