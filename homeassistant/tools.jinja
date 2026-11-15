@@ -1,0 +1,33 @@
+{% macro get_hourly_icon(attribute_id, datetime_id, fallback, conditions, night_conditions) %}
+
+  {% set descriptor = state_attr('sensor.weather_data', attribute_id) %}
+  {% set datetime = state_attr('sensor.weather_data', datetime_id) | int %}
+  {% set sunrise0 = states('sensor.sunrise0') | int %}
+  {% set sunset0 = states('sensor.sunset0') | int %}
+  {% set sunrise1 = states('sensor.sunrise1') | int %}
+  {% set sunset1 = states('sensor.sunset1') | int %}
+  {% if (datetime >= sunrise0 and datetime <= sunset0) or (datetime >= sunrise1 and datetime <= sunset1) %}
+    {{ conditions.get(descriptor, fallback).icon }}
+  {% else %}
+    {{ night_conditions.get(descriptor, fallback).icon }}     
+  {% endif %}
+
+{% endmacro %}
+
+{% macro get_today_icon(entity_id, fallback, conditions, night_conditions) %}
+
+  {% set descriptor = states(entity_id) %}
+  {% if states('sun.sun') == "above_horizon" %}
+    {{ conditions.get(descriptor, fallback).icon }}
+  {% else %}
+    {{ night_conditions.get(descriptor, fallback).icon }}     
+  {% endif %}
+
+{% endmacro %}
+
+{% macro get_dayx_icon(entity_id, fallback, conditions) %}
+
+  {% set descriptor = states(entity_id) %}
+  {{ conditions.get(descriptor, fallback).icon }}
+
+{% endmacro %}

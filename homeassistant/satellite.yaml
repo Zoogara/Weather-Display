@@ -1,0 +1,77 @@
+# Home Assistant side of the satellite image for the weather display.
+#
+# Why: the NASA GIBS server sends its images "chunked" (no Content-Length), which ESPHome's
+# online_image can't finish downloading.  So Home Assistant fetches the picture and serves it as a
+# normal static file from /config/www, which the display then downloads from
+#   http://192.168.0.100:8123/local/satellite.png
+# (change the address if your HA is not on 192.168.0.100:8123).
+#
+# Nothing here is needed for the radar - the radar template is unchanged.
+#
+# Steps
+#   1. Make sure the folder /config/www exists (create it if not - HA may need a restart the first
+#      time before it serves /local/).
+#   2. Add the blocks below to configuration.yaml (merge with any existing shell_command: / rest:
+#      / automation: sections), then restart Home Assistant.
+#   3. Test: Developer Tools -> Actions -> shell_command.fetch_satellite (no data needed), then open
+#      http://192.168.0.100:8123/local/satellite.png in a browser.
+#   4. Optional: add the two attributes at the bottom to your existing weather_display_radar
+#      template sensor so the display can show the time of the satellite image.
+
+# ---- 1. shell command: downloads the newest satellite image that actually has data -------------
+# NASA lists a new Himawari time slot a little before its imagery is complete, and asking for it then
+# returns just the coastline on black (about 9 KB, instead of about 145 KB).  So this tries the slots from
+# 20 minutes ago back to 60 minutes ago, newest first, and keeps the first image bigger than 60000
+# bytes.  It writes the slot it used (UTC, e.g. 2026-11-14T05:30:00Z) to /config/www/satellite_time.txt,
+# which the sensor in section 3 reads, so the time label always matches the image.  If no slot gives a
+# good image, the previous image is left in place.  (Needs curl, which the HA container has.)
+# NOTE: because this command contains a template ({{ }} / {% %}), Home Assistant does NOT run it through a
+# shell - it splits it into words and executes it directly, so loops, ;, ||, && and $(...) would silently
+# fail.  That is why the whole script is wrapped in  sh -c '...'  below.  It must not contain a single quote.
+shell_command:
+  fetch_satellite: >-
+    sh -c '{% set n = utcnow() %}{% set b = n.replace(minute=(n.minute // 10) * 10, second=0, microsecond=0) %}
+    for T in {% for m in (20, 30, 40, 50, 60) %}{{ (b - timedelta(minutes=m)).strftime('%Y-%m-%dT%H:%M:00Z') }} {% endfor %};
+    do
+    curl -sf -m 60 -o /config/www/satellite.tmp
+    "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?version=1.3.0&service=WMS&request=GetMap&layers=Himawari_AHI_Band13_Clean_Infrared,Coastlines_15m&styles=&format=image/png&transparent=false&crs=EPSG:3857&bbox=15051359,-5395336,17556047,-3220211&width=380&height=330&time=$T"
+    || continue;
+    if [ "$(wc -c < /config/www/satellite.tmp)" -gt 60000 ];
+    then mv /config/www/satellite.tmp /config/www/satellite.png; echo "$T" > /config/www/satellite_time.txt; break;
+    fi;
+    done;
+    rm -f /config/www/satellite.tmp'
+
+# ---- 2. automation: refresh the file every 15 minutes and at HA start-up ------------------------
+automation:
+  - alias: "Update satellite image for weather display"
+    trigger:
+      - platform: time_pattern
+        minutes: "/15"
+      - platform: homeassistant
+        event: start
+    action:
+      - service: shell_command.fetch_satellite
+
+# ---- 3. sensor with the time (UTC) of the image the display is showing --------------------------
+# Used for the time label.  It reads the file written by the shell command above, so it is exactly the
+# slot of the image that was downloaded.  The state is e.g. 2026-11-14T05:30:00Z.  If you already added
+# a "Himawari latest" sensor that asked NASA for its newest slot, just replace its command with this one -
+# the name and unique_id stay the same, so the display needs no change.  (NASA's newest slot can be
+# listed before its image is complete, which is how the blank 4:40 pm image happened.)
+command_line:
+  - sensor:
+      name: "Himawari latest"
+      unique_id: himawari_latest_time
+      scan_interval: 300
+      command_timeout: 10
+      command: "cat /config/www/satellite_time.txt"
+
+# ---- 4. optional: add these two attributes to your weather_display_radar template sensor -------
+#      (next to url1..url10 / timestamp1..timestamp10).  The display uses 'urls' as the image
+#      address if it is present and 'timestamps' as the label.
+#
+#          urls: "http://192.168.0.100:8123/local/satellite.png"
+#          timestamps: >
+#            {% set t = states('sensor.himawari_latest') %}
+#            {% if t not in ['unknown', 'unavailable', ''] %}{{ as_local(as_datetime(t)).strftime('%-I:%M %p') }}{% else %}-{% endif %}

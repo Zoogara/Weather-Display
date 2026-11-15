@@ -1,0 +1,54 @@
+# Home Assistant side of the radar frames for the weather display.
+#
+# Home Assistant downloads each Rainviewer radar frame once and serves it from /config/www/radar/, so the
+# display fetches plain local files (fast, no TLS, no dependence on Rainviewer being reachable from the
+# display).  Files are named after the Rainviewer frame id, e.g. /config/www/radar/6cb3be6a2c47.png, and
+# the display works the name out from the url1..urlN attributes your weather_display_radar template
+# already provides - the template needs no change.
+#
+# Steps
+#   1. /config/www must exist (the satellite setup already needs it).
+#   2. Add the blocks below to configuration.yaml (merge with your existing shell_command: / automation:
+#      sections - the satellite setup in ha_satellite_setup.yaml uses the same two headings), then restart
+#      Home Assistant or reload YAML.
+#   3. Test: Developer Tools -> Actions -> shell_command.fetch_radar, then open
+#      http://192.168.0.100:8123/local/radar/ - or check that /config/www/radar contains .png files.
+#
+# It keeps the newest 7 frames downloaded (the display currently uses 6, so you can add frames later without
+# touching HA) and deletes anything beyond the newest 16 files.  Frame size is 384x384 at zoom 6 - the display
+# scales it up 4/3, which gives the same map scale as the original 256px zoom 7 frames over 4x the area.
+# Replace YOUR_LAT/YOUR_LON in the url below with your latitude / longitude (the same as in the template sensor).
+
+# NOTE: because this command contains a template ({{ }} / {% %}), Home Assistant does NOT run it through a
+# shell - it splits it into words and executes it directly, so loops, ;, ||, && and $(...) would silently
+# fail.  That is why the whole script is wrapped in  sh -c '...'  below.  It must not contain a single quote.
+shell_command:
+  fetch_radar: >-
+    sh -c 'mkdir -p /config/www/radar;
+    {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}{% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+    {% if radar and radar.past and host %}
+    for P in {% for k in range(1, 8) %}{% if radar.past | length >= k %}{{ radar.past[-k].path }} {% endif %}{% endfor %};
+    do
+    ID=${P##*/};
+    [ -s /config/www/radar/$ID.png ] && continue;
+    curl -sf -m 30 -o /config/www/radar/$ID.tmp "{{ host }}$P/384/6/YOUR_LAT/YOUR_LON/1/1_1.png"
+    && [ "$(wc -c < /config/www/radar/$ID.tmp)" -gt 500 ]
+    && mv /config/www/radar/$ID.tmp /config/www/radar/$ID.png;
+    rm -f /config/www/radar/$ID.tmp;
+    done;
+    ls -t /config/www/radar/*.png 2>/dev/null | tail -n +17 | xargs rm -f;
+    {% endif %}
+    true'
+
+automation:
+  - alias: "Fetch radar frames for weather display"
+    trigger:
+      # a new set of frames shows up as a change in the generated time of your radar template sensor
+      - platform: state
+        entity_id: sensor.template_weather_display_radar
+      - platform: time_pattern
+        minutes: "/5"
+      - platform: homeassistant
+        event: start
+    action:
+      - service: shell_command.fetch_radar

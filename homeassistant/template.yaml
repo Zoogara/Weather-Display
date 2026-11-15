@@ -1,0 +1,871 @@
+# Home Assistant template sensors used by the weather display.  Merge under template: in your config
+# (it is a list of items, so paste it into / !include it from your existing template: section).
+#   radar         - frame urls and timestamps; radar.yaml downloads the frames (replace YOUR_LAT/YOUR_LON)
+#   forecast0-6   - 7 day text, long_text (forecast0-2) for the double-tap view
+#   icons, moon, hourly times/icons, sunrise/sunset, and the 'Hourly Weather Data' trigger sensor
+# Needs the BOM integration (sensor.rutherglen_*), weather.rutherglen_hourly, sensor.moon_phase, astroweather,
+# your weather station sensors, and tools.jinja copied to /config/custom_templates/.  Rename entities to suit.
+
+- sensor:
+    - unique_id: named_wind_direction
+      name: 'Wind Ordinal'
+      availability: "{{ is_number(states('sensor.wind_direction')) }}"
+      state: >-
+          {%if states('sensor.wind_direction') | float(0)<=11 %}N
+          {% elif states('sensor.wind_direction') | float(0)>348 %}N
+          {% elif states('sensor.wind_direction') | float(0)<=34 | float>11 %}NNE
+          {% elif states('sensor.wind_direction') | float(0)<=56 | float>34 %}NE
+          {% elif states('sensor.wind_direction') | float(0)<=79 | float>56 %}ENE
+          {% elif states('sensor.wind_direction') | float(0)<=101 | float>79 %}E
+          {% elif states('sensor.wind_direction') | float(0)<=124 | float>101 %}ESE
+          {% elif states('sensor.wind_direction') | float(0)<=146 | float>124 %}SE
+          {% elif states('sensor.wind_direction') | float(0)<=169 | float>146 %}SSE
+          {% elif states('sensor.wind_direction') | float(0)<=191 | float>169 %}S
+          {% elif states('sensor.wind_direction') | float(0)<=214 | float>191 %}SSW
+          {% elif states('sensor.wind_direction') | float(0)<=236 | float>214 %}SW
+          {% elif states('sensor.wind_direction') | float(0)<=259 | float>236 %}WSW
+          {% elif states('sensor.wind_direction') | float(0)<=281 | float>259 %}W
+          {% elif states('sensor.wind_direction') | float(0)<=304 | float>281 %}WNW
+          {% elif states('sensor.wind_direction') | float(0)<=326 | float>304 %}NW
+          {% elif states('sensor.wind_direction') | float(0)<=348 | float>326 %}NNW
+          {%- endif %}
+
+
+- sensor:
+    - unique_id: weather_display_radar
+      state: >
+        {{ as_datetime(state_attr('sensor.rainviewer_radar', 'generated')) }}
+      attributes:   
+        url10: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 10 and host %}
+            {{ host ~ radar.past[-10].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp10: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-10].time)).strftime('%-I:%M %p') }}
+        url9: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 9 and host %}
+            {{ host ~ radar.past[-9].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp9: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-9].time)).strftime('%-I:%M %p') }}
+        url8: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 8 and host %}
+            {{ host ~ radar.past[-8].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp8: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-8].time)).strftime('%-I:%M %p') }}
+        url7: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 7 and host %}
+            {{ host ~ radar.past[-7].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp7: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-7].time)).strftime('%-I:%M %p') }}
+        url6: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 6 and host %}
+            {{ host ~ radar.past[-6].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp6: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-6].time)).strftime('%-I:%M %p') }}
+        url5: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 5 and host %}
+            {{ host ~ radar.past[-5].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp5: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-5].time)).strftime('%-I:%M %p') }}
+        url4: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 4 and host %}
+            {{ host ~ radar.past[-4].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp4: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-4].time)).strftime('%-I:%M %p') }}
+        url3: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 3 and host %}
+            {{ host ~ radar.past[-3].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp3: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-3].time)).strftime('%-I:%M %p') }}
+        url2: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 2 and host %}
+            {{ host ~ radar.past[-2].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp2: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-2].time)).strftime('%-I:%M %p') }}
+        url1: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {% set host = state_attr('sensor.rainviewer_radar', 'host') %}
+          {% if radar and radar.past and radar.past | length > 1 and host %}
+            {{ host ~ radar.past[-1].path ~ '/256/7/YOUR_LAT/YOUR_LON/1/1_1.png' }}
+          {% else %}
+            {{ 'unavailable' }}
+          {% endif %}
+        timestamp1: >
+          {% set radar = state_attr('sensor.rainviewer_radar', 'radar') %}
+          {{ as_local(as_datetime(radar.past[-1].time)).strftime('%-I:%M %p') }}
+
+    - unique_id: weather_display_forecast0
+      state: "{{ 'weather' }}"
+      attributes:
+        long_text: >
+          {% if states('sensor.rutherglen_temp_min_0') == 'unknown' %}
+            {{ 'Remainder of today: ' ~ states('sensor.rutherglen_temp_max_0') ~ '° - ' ~ states('sensor.rutherglen_extended_text_0') }}
+          {% else %}
+            {{ 'Today: ' ~ states('sensor.rutherglen_temp_min_0') ~ '°/' ~ states('sensor.rutherglen_temp_max_0') ~ '° - ' 
+              ~ state_attr('sensor.rutherglen_extended_text_0', 'state') }}
+          {% endif %}
+    - unique_id: weather_display_forecast1
+      state: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 1] ~ ': ' ~ states('sensor.rutherglen_temp_min_1') ~ '°/' 
+            ~ states('sensor.rutherglen_temp_max_1') ~ '° - ' ~ states('sensor.rutherglen_short_text_1') 
+            ~ " " ~  states('sensor.rutherglen_rain_chance_1') ~ '% chance of ' ~ states('sensor.rutherglen_rain_amount_range_1') ~ 'mm' }}
+      attributes:
+        long_text: >
+          {{ 'Tomorrow: ' ~ states('sensor.rutherglen_temp_min_1') ~ '°/' ~ states('sensor.rutherglen_temp_max_1') ~ '° - ' 
+            ~ state_attr('sensor.rutherglen_extended_text_1', 'state') }}
+    - unique_id: weather_display_forecast2
+      state: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 2] ~ ': ' ~ states('sensor.rutherglen_temp_min_2') ~ '°/' 
+            ~ states('sensor.rutherglen_temp_max_2') ~ '° - ' ~ states('sensor.rutherglen_short_text_2') 
+            ~ " " ~  states('sensor.rutherglen_rain_chance_2') ~ '% chance of ' ~ states('sensor.rutherglen_rain_amount_range_2') ~ 'mm' }}
+      attributes:
+        long_text: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 2] ~ ': '  ~ states('sensor.rutherglen_temp_min_2') ~ '°/' ~ states('sensor.rutherglen_temp_max_2') ~ '° - ' 
+            ~ state_attr('sensor.rutherglen_extended_text_2', 'state') }}
+    - unique_id: weather_display_forecast3
+      state: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 3] ~ ': ' ~ states('sensor.rutherglen_temp_min_3') ~ '°/' 
+            ~ states('sensor.rutherglen_temp_max_3') ~ '° - ' ~ states('sensor.rutherglen_short_text_3') 
+            ~ " " ~  states('sensor.rutherglen_rain_chance_3') ~ '% chance of ' ~ states('sensor.rutherglen_rain_amount_range_3') ~ 'mm' }}
+    - unique_id: weather_display_forecast4
+      state: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 4] ~ ': ' ~ states('sensor.rutherglen_temp_min_4') ~ '°/' 
+            ~ states('sensor.rutherglen_temp_max_4') ~ '° - ' ~ states('sensor.rutherglen_short_text_4') 
+            ~ " " ~  states('sensor.rutherglen_rain_chance_4') ~ '% chance of ' ~ states('sensor.rutherglen_rain_amount_range_4') ~ 'mm' }}
+    - unique_id: weather_display_forecast5
+      state: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 5] ~ ': ' ~ states('sensor.rutherglen_temp_min_5') ~ '°/' 
+            ~ states('sensor.rutherglen_temp_max_5') ~ '° - ' ~ states('sensor.rutherglen_short_text_5') 
+            ~ " " ~  states('sensor.rutherglen_rain_chance_5') ~ '% chance of ' ~ states('sensor.rutherglen_rain_amount_range_5') ~ 'mm' }}
+    - unique_id: weather_display_forecast6
+      state: >
+          {% set days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri']  %}
+          {{ days[now().strftime('%w')| int + 6] ~ ': ' ~ states('sensor.rutherglen_temp_min_6') ~ '°/' 
+            ~ states('sensor.rutherglen_temp_max_6') ~ '° - ' ~ states('sensor.rutherglen_short_text_6') 
+            ~ " " ~  states('sensor.rutherglen_rain_chance_6') ~ '% chance of ' ~ states('sensor.rutherglen_rain_amount_range_6') ~ 'mm' }}
+
+
+    - unique_id: weather_display_moon_icon
+      variables:
+          fallback:
+            icon: "\uF071"
+          conditions:
+            new_moon: 
+              icon: "\uF095"
+            waxing_crescent: 
+              icon: "\uF09A"
+            first_quarter: 
+              icon: "\uF09D"
+            waxing_gibbous: 
+              icon: "\uF0A0"
+            full_moon: 
+              icon: "\uF0A3"
+            waning_gibbous: 
+              icon: "\uF0A6"
+            last_quarter: 
+              icon: "\uF0AA"
+            waning_crescent: 
+              icon: "\uF07D"
+      state: >
+          {% set descriptor = states('sensor.moon_phase') %}
+          {{ conditions.get(descriptor, fallback).icon }}
+
+    - unique_id: weather_display_moonrise_next
+      state: "{{ as_local(as_datetime(states('sensor.astroweather_backyard_moon_next_rising'))).strftime('%-I:%M %p') }}"
+
+    - unique_id: weather_display_icon0
+      variables:
+        <<: &conditions
+          fallback:
+            icon: "\uF00D"
+          conditions:
+            clear: 
+              icon: "\uF00D"
+            cloudy: 
+              icon: "\uF013"
+            cyclone: 
+              icon: "\uF0C1"
+            exceptional: 
+              icon: "\uF0C1"
+            dust: 
+              icon: "\uF082"
+            dusty: 
+              icon: "\uF082"
+            fog: 
+              icon: "\uF014"
+            frost: 
+              icon: "\uF076"
+            haze: 
+              icon: "\uF021"
+            hazy: 
+              icon: "\uF021"
+            heavy_shower: 
+              icon: "\uF008"
+            heavy_showers: 
+              icon: "\uF008"
+            light_rain: 
+              icon: "\uF01A"
+            light_shower: 
+              icon: "\uF009"
+            light_showers: 
+              icon: "\uF00A"
+            mostly_sunny: 
+              icon: "\uF00C"
+            partly_cloudy: 
+              icon: "\uF002"
+            partlycloudy: 
+              icon: "\uF002"
+            rain: 
+              icon: "\uF019"
+            rainy: 
+              icon: "\uF019"
+            shower: 
+              icon: "\uF009"
+            showers: 
+              icon: "\uF009"
+            snow: 
+              icon: "\uF076"
+            snowy: 
+              icon: "\uF076"
+            storm: 
+              icon: "\uF01E"
+            lightning-rainy: 
+              icon: "\uF01E"
+            storms: 
+              icon: "\uF01E"
+            sunny: 
+              icon: "\uF00D"
+            tropical_cyclone: 
+              icon: "\uF073"
+            wind: 
+              icon: "\uF050"
+            windy: 
+              icon: "\uF050"
+          night_conditions:
+            clear: 
+              icon: "\uF02E"
+            clear-night: 
+              icon: "\uF02E"
+            cloudy: 
+              icon: "\uF013"
+            cyclone: 
+              icon: "\uF0C1"
+            exceptional: 
+              icon: "\uF0C1"
+            dust: 
+              icon: "\uF082"
+            dusty: 
+              icon: "\uF082"
+            fog: 
+              icon: "\uF014"
+            frost: 
+              icon: "\uF076"
+            haze: 
+              icon: "\uF021"
+            hazy: 
+              icon: "\uF021"
+            heavy_shower: 
+              icon: "\uF028"
+            heavy_showers: 
+              icon: "\uF028"
+            light_rain: 
+              icon: "\uF01A"
+            light_shower: 
+              icon: "\uF029"
+            light_showers: 
+              icon: "\uF029"
+            mostly_sunny: 
+              icon: "\uF086"
+            partly_cloudy: 
+              icon: "\uF086"
+            partlycloudy: 
+              icon: "\uF086"
+            rain: 
+              icon: "\uF019"
+            rainy: 
+              icon: "\uF019"
+            shower: 
+              icon: "\uF029"
+            showers: 
+              icon: "\uF029"
+            snow: 
+              icon: "\uF076"
+            snowy: 
+              icon: "\uF076"
+            storm: 
+              icon: "\uF01E"
+            lightning-rainy: 
+              icon: "\uF01E"
+            storms: 
+              icon: "\uF01E"
+            sunny: 
+              icon: "\uF02E"
+            tropical_cyclone: 
+              icon: "\uF073"
+            wind: 
+              icon: "\uF050"
+            windy: 
+              icon: "\uF050"
+      state: >
+        {% from 'tools.jinja' import get_today_icon %}
+        {{ get_today_icon('sensor.rutherglen_icon_descriptor_0', fallback, conditions, night_conditions) }}
+                      
+    - unique_id: weather_display_icon1
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_dayx_icon %}
+        {{ get_dayx_icon('sensor.rutherglen_icon_descriptor_1', fallback, conditions) }}
+          
+    - unique_id: weather_display_icon2
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_dayx_icon %}
+        {{ get_dayx_icon('sensor.rutherglen_icon_descriptor_2', fallback, conditions) }}
+        
+    - unique_id: weather_display_icon3
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_dayx_icon %}
+        {{ get_dayx_icon('sensor.rutherglen_icon_descriptor_3', fallback, conditions) }}
+
+    - unique_id: weather_display_icon4
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_dayx_icon %}
+        {{ get_dayx_icon('sensor.rutherglen_icon_descriptor_4', fallback, conditions) }}
+
+    - unique_id: weather_display_icon5
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_dayx_icon %}
+        {{ get_dayx_icon('sensor.rutherglen_icon_descriptor_5', fallback, conditions) }}
+
+    - unique_id: weather_display_icon6
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_dayx_icon %}
+        {{ get_dayx_icon('sensor.rutherglen_icon_descriptor_6', fallback, conditions) }}
+        
+    - unique_id: weather_display_hourly_icon0
+      variables:          
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_0', 'datetime_0', fallback, conditions, night_conditions) }}
+        
+    - unique_id: weather_display_hourly_icon1
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_1', 'datetime_1', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon2
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_2', 'datetime_2', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon3
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_3', 'datetime_3', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon4
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_4', 'datetime_4', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon5
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_5', 'datetime_5', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon6
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_6', 'datetime_6', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon7
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_7', 'datetime_7', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon8
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_8', 'datetime_8', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon9
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_9', 'datetime_9', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon10
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_10', 'datetime_10', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon11
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_11', 'datetime_11', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon12
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_12', 'datetime_12', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon13
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_13', 'datetime_13', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon14
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_14', 'datetime_14', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon15
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_15', 'datetime_15', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon16
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_16', 'datetime_16', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon17
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_17', 'datetime_17', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon18
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_18', 'datetime_18', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon19
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_19', 'datetime_19', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon20
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_20', 'datetime_20', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon21
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_21', 'datetime_21', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon22
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_22', 'datetime_22', fallback, conditions, night_conditions) }}
+            
+    - unique_id: weather_display_hourly_icon23
+      variables:
+        <<: *conditions
+      state: >
+        {% from 'tools.jinja' import get_hourly_icon %}
+        {{ get_hourly_icon('condition_23', 'datetime_23', fallback, conditions, night_conditions) }}
+        
+    - unique_id: weather_display_hourly_time0
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_0'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time1
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_1'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time2
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_2'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time3
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_3'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time4
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_4'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time5
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_5'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time6
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_6'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time7
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_7'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time8
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_8'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time9
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_9'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time10
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_10'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time11
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_11'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time12
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_12'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time13
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_13'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time14
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_14'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time15
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_15'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time16
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_16'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time17
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_17'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time18
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_18'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time19
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_19'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time20
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_20'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time21
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_21'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time22
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_22'))).strftime('%-I %p') }}"
+  
+    - unique_id: weather_display_hourly_time23
+      state: "{{ as_local(as_datetime(state_attr('sensor.weather_data', 'datetime_23'))).strftime('%-I %p') }}"
+
+- trigger:
+    platform: time_pattern
+    minutes: "/1"
+  action:
+    - action: weather.get_forecasts
+      data:
+        type: hourly
+      target:
+        entity_id: weather.rutherglen_hourly
+      response_variable: hourly
+  sensor:
+    - name: Hourly Weather Data
+      unique_id: UIYJ_weather_data
+      state: "{{ states('weather.rutherglen_hourly') }}"
+      attributes:
+        wind_bearing_current: "{{ states('sensor.named_wind_direction') }}"
+        wind_direction_current: "{{ states('sensor.wind_direction') | float(none) }}"
+        wind_speed_current: "{{ states('sensor.wind_speed') | float(none) }}"
+        wind_gust_current: "{{ states('sensor.wind_gust') | float(none) }}"
+        temperature_current: "{{ states('sensor.weather_station_temperature') | float(none) }}"
+        humidity_current: "{{ states('sensor.weather_station_humidity') | float(none) }}"
+        pressure_current: "{{ states('sensor.atmospheric_pressure_msl') | float(none) }}"
+        rain_today: "{{ states('sensor.rain_accumulation') | float(none) }}"
+        datetime_0: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[0].datetime)) }}"
+        temperature_0: "{{ hourly['weather.rutherglen_hourly'].forecast[0].temperature }}"
+        condition_0: "{{ hourly['weather.rutherglen_hourly'].forecast[0].condition }}"
+        precipitation_0: "{{ hourly['weather.rutherglen_hourly'].forecast[0].precipitation | float }}"
+        precipitation_probability_0: "{{ hourly['weather.rutherglen_hourly'].forecast[0].precipitation_probability | int }}"
+        wind_bearing_0: "{{ hourly['weather.rutherglen_hourly'].forecast[0].wind_bearing }}"
+        wind_speed_0: "{{ hourly['weather.rutherglen_hourly'].forecast[0].wind_speed | float }}"
+        datetime_1: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[1].datetime)) }}"
+        temperature_1: "{{ hourly['weather.rutherglen_hourly'].forecast[1].temperature }}"
+        condition_1: "{{ hourly['weather.rutherglen_hourly'].forecast[1].condition }}"
+        precipitation_1: "{{ hourly['weather.rutherglen_hourly'].forecast[1].precipitation | float }}"
+        precipitation_probability_1: "{{ hourly['weather.rutherglen_hourly'].forecast[1].precipitation_probability | int }}"
+        wind_bearing_1: "{{ hourly['weather.rutherglen_hourly'].forecast[1].wind_bearing }}"
+        wind_speed_1: "{{ hourly['weather.rutherglen_hourly'].forecast[1].wind_speed | float }}"
+        datetime_2: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[2].datetime)) }}"
+        temperature_2: "{{ hourly['weather.rutherglen_hourly'].forecast[2].temperature }}"
+        condition_2: "{{ hourly['weather.rutherglen_hourly'].forecast[2].condition }}"
+        precipitation_2: "{{ hourly['weather.rutherglen_hourly'].forecast[2].precipitation | float }}"
+        precipitation_probability_2: "{{ hourly['weather.rutherglen_hourly'].forecast[2].precipitation_probability | int }}"
+        wind_bearing_2: "{{ hourly['weather.rutherglen_hourly'].forecast[2].wind_bearing }}"
+        wind_speed_2: "{{ hourly['weather.rutherglen_hourly'].forecast[2].wind_speed | float }}"
+        datetime_3: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[3].datetime)) }}"
+        temperature_3: "{{ hourly['weather.rutherglen_hourly'].forecast[3].temperature }}"
+        condition_3: "{{ hourly['weather.rutherglen_hourly'].forecast[3].condition }}"
+        precipitation_3: "{{ hourly['weather.rutherglen_hourly'].forecast[3].precipitation | float }}"
+        precipitation_probability_3: "{{ hourly['weather.rutherglen_hourly'].forecast[3].precipitation_probability | int }}"
+        wind_bearing_3: "{{ hourly['weather.rutherglen_hourly'].forecast[3].wind_bearing }}"
+        wind_speed_3: "{{ hourly['weather.rutherglen_hourly'].forecast[3].wind_speed | float }}"
+        datetime_4: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[4].datetime)) }}"
+        temperature_4: "{{ hourly['weather.rutherglen_hourly'].forecast[4].temperature }}"
+        condition_4: "{{ hourly['weather.rutherglen_hourly'].forecast[4].condition }}"
+        precipitation_4: "{{ hourly['weather.rutherglen_hourly'].forecast[4].precipitation | float }}"
+        precipitation_probability_4: "{{ hourly['weather.rutherglen_hourly'].forecast[4].precipitation_probability | int }}"
+        wind_bearing_4: "{{ hourly['weather.rutherglen_hourly'].forecast[4].wind_bearing }}"
+        wind_speed_4: "{{ hourly['weather.rutherglen_hourly'].forecast[4].wind_speed | float }}"
+        datetime_5: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[5].datetime)) }}"
+        temperature_5: "{{ hourly['weather.rutherglen_hourly'].forecast[5].temperature }}"
+        condition_5: "{{ hourly['weather.rutherglen_hourly'].forecast[5].condition }}"
+        precipitation_5: "{{ hourly['weather.rutherglen_hourly'].forecast[5].precipitation | float }}"
+        precipitation_probability_5: "{{ hourly['weather.rutherglen_hourly'].forecast[5].precipitation_probability | int }}"
+        wind_bearing_5: "{{ hourly['weather.rutherglen_hourly'].forecast[5].wind_bearing }}"
+        wind_speed_5: "{{ hourly['weather.rutherglen_hourly'].forecast[5].wind_speed | float }}"
+        datetime_6: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[6].datetime)) }}"
+        temperature_6: "{{ hourly['weather.rutherglen_hourly'].forecast[6].temperature }}"
+        condition_6: "{{ hourly['weather.rutherglen_hourly'].forecast[6].condition }}"
+        precipitation_6: "{{ hourly['weather.rutherglen_hourly'].forecast[6].precipitation | float }}"
+        precipitation_probability_6: "{{ hourly['weather.rutherglen_hourly'].forecast[6].precipitation_probability | int }}"
+        wind_bearing_6: "{{ hourly['weather.rutherglen_hourly'].forecast[6].wind_bearing }}"
+        wind_speed_6: "{{ hourly['weather.rutherglen_hourly'].forecast[6].wind_speed | float }}"
+        datetime_7: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[7].datetime)) }}"
+        temperature_7: "{{ hourly['weather.rutherglen_hourly'].forecast[7].temperature }}"
+        condition_7: "{{ hourly['weather.rutherglen_hourly'].forecast[7].condition }}"
+        precipitation_7: "{{ hourly['weather.rutherglen_hourly'].forecast[7].precipitation | float }}"
+        precipitation_probability_7: "{{ hourly['weather.rutherglen_hourly'].forecast[7].precipitation_probability | int }}"
+        wind_bearing_7: "{{ hourly['weather.rutherglen_hourly'].forecast[7].wind_bearing }}"
+        wind_speed_7: "{{ hourly['weather.rutherglen_hourly'].forecast[7].wind_speed | float }}"
+        datetime_8: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[8].datetime)) }}"
+        temperature_8: "{{ hourly['weather.rutherglen_hourly'].forecast[8].temperature }}"
+        condition_8: "{{ hourly['weather.rutherglen_hourly'].forecast[8].condition }}"
+        precipitation_8: "{{ hourly['weather.rutherglen_hourly'].forecast[8].precipitation | float }}"
+        precipitation_probability_8: "{{ hourly['weather.rutherglen_hourly'].forecast[8].precipitation_probability | int }}"
+        wind_bearing_8: "{{ hourly['weather.rutherglen_hourly'].forecast[8].wind_bearing }}"
+        wind_speed_8: "{{ hourly['weather.rutherglen_hourly'].forecast[8].wind_speed | float }}"
+        datetime_9: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[9].datetime)) }}"
+        temperature_9: "{{ hourly['weather.rutherglen_hourly'].forecast[9].temperature }}"
+        condition_9: "{{ hourly['weather.rutherglen_hourly'].forecast[9].condition }}"
+        precipitation_9: "{{ hourly['weather.rutherglen_hourly'].forecast[9].precipitation | float }}"
+        precipitation_probability_9: "{{ hourly['weather.rutherglen_hourly'].forecast[9].precipitation_probability | int }}"
+        wind_bearing_9: "{{ hourly['weather.rutherglen_hourly'].forecast[9].wind_bearing }}"
+        wind_speed_9: "{{ hourly['weather.rutherglen_hourly'].forecast[9].wind_speed | float }}"
+        datetime_10: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[10].datetime)) }}"
+        temperature_10: "{{ hourly['weather.rutherglen_hourly'].forecast[10].temperature }}"
+        condition_10: "{{ hourly['weather.rutherglen_hourly'].forecast[10].condition }}"
+        precipitation_10: "{{ hourly['weather.rutherglen_hourly'].forecast[10].precipitation | float }}"
+        precipitation_probability_10: "{{ hourly['weather.rutherglen_hourly'].forecast[10].precipitation_probability | int }}"
+        wind_bearing_10: "{{ hourly['weather.rutherglen_hourly'].forecast[10].wind_bearing }}"
+        wind_speed_10: "{{ hourly['weather.rutherglen_hourly'].forecast[10].wind_speed | float }}"
+        datetime_11: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[11].datetime)) }}"
+        temperature_11: "{{ hourly['weather.rutherglen_hourly'].forecast[11].temperature }}"
+        condition_11: "{{ hourly['weather.rutherglen_hourly'].forecast[11].condition }}"
+        precipitation_11: "{{ hourly['weather.rutherglen_hourly'].forecast[11].precipitation | float }}"
+        precipitation_probability_11: "{{ hourly['weather.rutherglen_hourly'].forecast[11].precipitation_probability | int }}"
+        wind_bearing_11: "{{ hourly['weather.rutherglen_hourly'].forecast[11].wind_bearing }}"
+        wind_speed_11: "{{ hourly['weather.rutherglen_hourly'].forecast[11].wind_speed | float }}"
+        datetime_12: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[12].datetime)) }}"
+        temperature_12: "{{ hourly['weather.rutherglen_hourly'].forecast[12].temperature }}"
+        condition_12: "{{ hourly['weather.rutherglen_hourly'].forecast[12].condition }}"
+        precipitation_12: "{{ hourly['weather.rutherglen_hourly'].forecast[12].precipitation | float }}"
+        precipitation_probability_12: "{{ hourly['weather.rutherglen_hourly'].forecast[12].precipitation_probability | int }}"
+        wind_bearing_12: "{{ hourly['weather.rutherglen_hourly'].forecast[12].wind_bearing }}"
+        wind_speed_12: "{{ hourly['weather.rutherglen_hourly'].forecast[12].wind_speed | float }}"
+        datetime_13: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[13].datetime)) }}"
+        temperature_13: "{{ hourly['weather.rutherglen_hourly'].forecast[13].temperature }}"
+        condition_13: "{{ hourly['weather.rutherglen_hourly'].forecast[13].condition }}"
+        precipitation_13: "{{ hourly['weather.rutherglen_hourly'].forecast[13].precipitation | float }}"
+        precipitation_probability_13: "{{ hourly['weather.rutherglen_hourly'].forecast[13].precipitation_probability | int }}"
+        wind_bearing_13: "{{ hourly['weather.rutherglen_hourly'].forecast[13].wind_bearing }}"
+        wind_speed_13: "{{ hourly['weather.rutherglen_hourly'].forecast[13].wind_speed | float }}"
+        datetime_14: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[14].datetime)) }}"
+        temperature_14: "{{ hourly['weather.rutherglen_hourly'].forecast[14].temperature }}"
+        condition_14: "{{ hourly['weather.rutherglen_hourly'].forecast[14].condition }}"
+        precipitation_14: "{{ hourly['weather.rutherglen_hourly'].forecast[14].precipitation | float }}"
+        precipitation_probability_14: "{{ hourly['weather.rutherglen_hourly'].forecast[14].precipitation_probability | int }}"
+        wind_bearing_14: "{{ hourly['weather.rutherglen_hourly'].forecast[14].wind_bearing }}"
+        wind_speed_14: "{{ hourly['weather.rutherglen_hourly'].forecast[14].wind_speed | float }}"
+        datetime_15: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[15].datetime)) }}"
+        temperature_15: "{{ hourly['weather.rutherglen_hourly'].forecast[15].temperature }}"
+        condition_15: "{{ hourly['weather.rutherglen_hourly'].forecast[15].condition }}"
+        precipitation_15: "{{ hourly['weather.rutherglen_hourly'].forecast[15].precipitation | float }}"
+        precipitation_probability_15: "{{ hourly['weather.rutherglen_hourly'].forecast[15].precipitation_probability | int }}"
+        wind_bearing_15: "{{ hourly['weather.rutherglen_hourly'].forecast[15].wind_bearing }}"
+        wind_speed_15: "{{ hourly['weather.rutherglen_hourly'].forecast[15].wind_speed | float }}"
+        datetime_16: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[16].datetime)) }}"
+        temperature_16: "{{ hourly['weather.rutherglen_hourly'].forecast[16].temperature }}"
+        condition_16: "{{ hourly['weather.rutherglen_hourly'].forecast[16].condition }}"
+        precipitation_16: "{{ hourly['weather.rutherglen_hourly'].forecast[16].precipitation | float }}"
+        precipitation_probability_16: "{{ hourly['weather.rutherglen_hourly'].forecast[16].precipitation_probability | int }}"
+        wind_bearing_16: "{{ hourly['weather.rutherglen_hourly'].forecast[16].wind_bearing }}"
+        wind_speed_16: "{{ hourly['weather.rutherglen_hourly'].forecast[16].wind_speed | float }}"
+        datetime_17: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[17].datetime)) }}"
+        temperature_17: "{{ hourly['weather.rutherglen_hourly'].forecast[17].temperature }}"
+        condition_17: "{{ hourly['weather.rutherglen_hourly'].forecast[17].condition }}"
+        precipitation_17: "{{ hourly['weather.rutherglen_hourly'].forecast[17].precipitation | float }}"
+        precipitation_probability_17: "{{ hourly['weather.rutherglen_hourly'].forecast[17].precipitation_probability | int }}"
+        wind_bearing_17: "{{ hourly['weather.rutherglen_hourly'].forecast[17].wind_bearing }}"
+        wind_speed_17: "{{ hourly['weather.rutherglen_hourly'].forecast[17].wind_speed | float }}"
+        datetime_18: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[18].datetime)) }}"
+        temperature_18: "{{ hourly['weather.rutherglen_hourly'].forecast[18].temperature }}"
+        condition_18: "{{ hourly['weather.rutherglen_hourly'].forecast[18].condition }}"
+        precipitation_18: "{{ hourly['weather.rutherglen_hourly'].forecast[18].precipitation | float }}"
+        precipitation_probability_18: "{{ hourly['weather.rutherglen_hourly'].forecast[18].precipitation_probability | int }}"
+        wind_bearing_18: "{{ hourly['weather.rutherglen_hourly'].forecast[18].wind_bearing }}"
+        wind_speed_18: "{{ hourly['weather.rutherglen_hourly'].forecast[18].wind_speed | float }}"
+        datetime_19: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[19].datetime)) }}"
+        temperature_19: "{{ hourly['weather.rutherglen_hourly'].forecast[19].temperature }}"
+        condition_19: "{{ hourly['weather.rutherglen_hourly'].forecast[19].condition }}"
+        precipitation_19: "{{ hourly['weather.rutherglen_hourly'].forecast[19].precipitation | float }}"
+        precipitation_probability_19: "{{ hourly['weather.rutherglen_hourly'].forecast[19].precipitation_probability | int }}"
+        wind_bearing_19: "{{ hourly['weather.rutherglen_hourly'].forecast[19].wind_bearing }}"
+        wind_speed_19: "{{ hourly['weather.rutherglen_hourly'].forecast[19].wind_speed | float }}"
+        datetime_20: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[20].datetime)) }}"
+        temperature_20: "{{ hourly['weather.rutherglen_hourly'].forecast[20].temperature }}"
+        condition_20: "{{ hourly['weather.rutherglen_hourly'].forecast[20].condition }}"
+        precipitation_20: "{{ hourly['weather.rutherglen_hourly'].forecast[20].precipitation | float }}"
+        precipitation_probability_20: "{{ hourly['weather.rutherglen_hourly'].forecast[20].precipitation_probability | int }}"
+        wind_bearing_20: "{{ hourly['weather.rutherglen_hourly'].forecast[20].wind_bearing }}"
+        wind_speed_20: "{{ hourly['weather.rutherglen_hourly'].forecast[20].wind_speed | float }}"
+        datetime_21: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[21].datetime)) }}"
+        temperature_21: "{{ hourly['weather.rutherglen_hourly'].forecast[21].temperature }}"
+        condition_21: "{{ hourly['weather.rutherglen_hourly'].forecast[21].condition }}"
+        precipitation_21: "{{ hourly['weather.rutherglen_hourly'].forecast[21].precipitation | float }}"
+        precipitation_probability_21: "{{ hourly['weather.rutherglen_hourly'].forecast[21].precipitation_probability | int }}"
+        wind_bearing_21: "{{ hourly['weather.rutherglen_hourly'].forecast[21].wind_bearing }}"
+        wind_speed_21: "{{ hourly['weather.rutherglen_hourly'].forecast[21].wind_speed | float }}"
+        datetime_22: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[22].datetime)) }}"
+        temperature_22: "{{ hourly['weather.rutherglen_hourly'].forecast[22].temperature }}"
+        condition_22: "{{ hourly['weather.rutherglen_hourly'].forecast[22].condition }}"
+        precipitation_22: "{{ hourly['weather.rutherglen_hourly'].forecast[22].precipitation | float }}"
+        precipitation_probability_22: "{{ hourly['weather.rutherglen_hourly'].forecast[22].precipitation_probability | int }}"
+        wind_bearing_22: "{{ hourly['weather.rutherglen_hourly'].forecast[22].wind_bearing }}"
+        wind_speed_22: "{{ hourly['weather.rutherglen_hourly'].forecast[22].wind_speed | float }}"
+        datetime_23: "{{ as_timestamp(as_datetime(hourly['weather.rutherglen_hourly'].forecast[23].datetime)) }}"
+        temperature_23: "{{ hourly['weather.rutherglen_hourly'].forecast[23].temperature }}"
+        condition_23: "{{ hourly['weather.rutherglen_hourly'].forecast[23].condition }}"
+        precipitation_23: "{{ hourly['weather.rutherglen_hourly'].forecast[23].precipitation | float }}"
+        precipitation_probability_23: "{{ hourly['weather.rutherglen_hourly'].forecast[23].precipitation_probability | int }}"
+        wind_bearing_23: "{{ hourly['weather.rutherglen_hourly'].forecast[23].wind_bearing }}"
+        wind_speed_23: "{{ hourly['weather.rutherglen_hourly'].forecast[23].wind_speed | float }}"
+        sunset: "{{ as_timestamp(as_datetime(state_attr('sun.sun', 'next_setting'))) }}"
+        sunset_txt: "{{ as_local(as_datetime(state_attr('sun.sun', 'next_setting'))).strftime('%-I:%M %p') }}"
+        sunrise: "{{ as_timestamp(as_datetime(state_attr('sun.sun', 'next_rising'))) }}"
+        sunrise_txt:  "{{ as_local(as_datetime(state_attr('sun.sun', 'next_rising'))).strftime('%-I:%M %p') }}"
+
+- sensor:
+
+    - default_entity_id: sensor.sunset0
+      state: "{{ as_timestamp(states.sensor.rutherglen_astronomical_sunset_time_0.state,0) }}"
+      name: sunset0
+    - default_entity_id: sensor.sunset1
+      state: "{{ as_timestamp(states.sensor.rutherglen_astronomical_sunset_time_1.state,0) }}"
+      name: sunset1
+    - default_entity_id: sensor.sunset2
+      state: "{{ as_timestamp(states.sensor.rutherglen_astronomical_sunset_time_0.state,0) }}"
+      name: sunset2
+      
+
+    - default_entity_id: sensor.sunrise0
+      state: "{{ as_timestamp(states.sensor.rutherglen_astronomical_sunrise_time_0.state,0) }}"
+      name: sunrise0    
+    - default_entity_id: sensor.sunrise1
+      state: "{{ as_timestamp(states.sensor.rutherglen_astronomical_sunrise_time_1.state,0) }}"
+      name: sunrise1
+    - default_entity_id: sensor.sunrise2
+      state: "{{ as_timestamp(states.sensor.rutherglen_astronomical_sunrise_time_2.state,0) }}"
+      name: sunrise2

@@ -8,7 +8,7 @@ esphome:
     build_flags: "-DBOARD_HAS_PSRAM" 
     board_build.esp-idf.memory_type: qio_opi 
     board_upload.maximum_ram_size: 524288 
-    board_build.flash_size: 8MB 
+    board_build.flash_size: 16MB
   on_boot: 
     then:
       # restore values for start and end time for presence sensor wake
@@ -22,7 +22,7 @@ esphome:
 esp32:
   board: esp32-s3-devkitc-1
   variant: esp32s3
-  flash_size: 8MB
+  flash_size: 16MB
   framework:
     type: esp-idf
     sdkconfig_options:
@@ -30,7 +30,7 @@ esp32:
       CONFIG_ESP32S3_DATA_CACHE_64KB: y
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
       CONFIG_SPIRAM_RODATA: y
-      CONFIG_ESPTOOLPY_FLASHSIZE_8MB: y
+      CONFIG_ESPTOOLPY_FLASHSIZE_16MB: y
 
 psram:
   mode: octal
@@ -52,14 +52,16 @@ i2c:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  # mains powered display doing lots of http: light power save can delay or abort TCP connects
+  power_save_mode: none
 
   ap:
     ssid: "Screentest Fallback Hotspot"
-    password: "hyYhqfhSOlkd"
+    password: !secret weather_ap_password
 
 ota:
   - platform: esphome
-    password: "8f03e50909721af0db102dcd689f88ea"
+    password: !secret weather_ota_password
 
 logger:
   level: DEBUG
@@ -235,7 +237,7 @@ display:
         - 47        #g6
         - 21        #g7\
 
-# Time sourved from Home Assitant
+# Time sourced from Home Assitant
 time:
   - platform: homeassistant
     id: my_time
@@ -253,6 +255,9 @@ time:
               { id(boot_time) = id(my_time).now();
                 id(boot_time_flag) = false;
               }
+        - logger.log:
+            format: "Time now is: %X"
+            args: id(my_time).now()
     on_time:
       # Update clock on title bar, every five seconds is accurate enough.
       - seconds: /5
@@ -265,6 +270,7 @@ time:
       # Download radar - using timer means script doesn't block
       # Only run script if flag is set and script not already running
       # This will only run when the on_time: minutes: 1, 11, 21, 31, 41, 51 has run first
+      # i.e. this runs every 12 secs from the time the main script runs until the radar images are all downloaded.
       - seconds: /12
         then:
           - if:
@@ -290,8 +296,13 @@ time:
               condition:
                 - lambda: return id(radar_flag) == 0;
               then: 
+                # Only set the flag here - the /12 second timer above starts the download script.
+                # Starting it from here as well caused a double start in the same second.
                 - lambda: id(radar_flag) = 1;
-                - script.execute: script_radar_download
+      # Himawari-9 infrared is updated every 10 minutes but arrives with a delay, so refresh twice an hour
+      - seconds: 0
+        minutes: 3, 33
+        then:
           - lambda: id(satellite_flag) = 1;
           - script.execute: script_satellite_download
       # Update daily forecast every 20 min - this is good enough to keep up with BOM updates
@@ -299,6 +310,12 @@ time:
         minutes: /20
         then: 
           - script.execute: script_days
+      # restart each morning at 1:00am
+      - hours: 1
+        minutes: 0
+        seconds: 0
+        then:
+          - switch.turn_on: restart_switch
 
 datetime:
   - platform: template
@@ -318,7 +335,7 @@ datetime:
     id: presence_start_time
     type: TIME
     optimistic: True
-    initial_value: "8:00"
+    initial_value: "08:00"
     restore_value: True
     on_time:
       then:
@@ -439,13 +456,20 @@ script:
           - id: forecast_icon_5
           - id: forecast_text_6
           - id: forecast_icon_6
+      - script.execute: script_forecast_scroll
 
-  # Radar dowload script - note - this script gets run every 10 minutes, and then every 12
-  # seconds after that run until all =images are downloaded or too many errors.  This 
-  # approach is used because the http_request: engine is VERY resource hungry and crashes can occur
-  # if we simply try and download these one after the other.
+  # Radar download script - this script gets run every 10 minutes, and then every 12
+  # seconds after that run until all 5 images are downloaded or too many errors.  This 
+  # approach is used because the http_request: engine blocks the main loop while a request
+  # is set up, so we only ever start one image per run.
   - id: script_radar_download
     then: 
+      # A download is already running - ignore this start request
+      - if:
+          condition:
+            lambda: return id(radar_busy);
+          then:
+            - script.stop: script_radar_download
       # If we have got to 10 errors or more during download of ALL timeslots
       # then give up and display an error message
       - if:
@@ -459,10 +483,10 @@ script:
             - lambda: |-
                 id(radar_flag) = 0;
                 id(radar_errors) = 0;
-      # This block executes only if flag is set to other than zero,
-      # the flag represents the url to download from the list of radar image urls.
-      # All each section does is update the matching online_image: with the new URL 
-      # then exits the scrip.  The online_image object manages the rest of the download.
+                id(radar_busy) = false;
+      # radar_flag is the number of the frame to download next (1 = newest).
+      # Each section only sets the URL on the matching online_image: which starts its download;
+      # that image's on_download_finished then moves radar_flag on to the next frame.
       - if:
           condition:
             lambda: return id(radar_flag) != 0;
@@ -471,80 +495,122 @@ script:
                 condition:
                   lambda: return id(radar_flag) == 1;
                 then:
-                  # turn on downloading icon - to warn users that response may be slow as http_request: blocks
                   - lvgl.widget.show: lbl_downloading
-                  # update status text to indicate what image is being downloaded
-                  - lambda: id(radar_dlstat) = "url0";
-                  # refresh the field that displays the above global
+                  - lambda: id(radar_dlstat) = "1/5";
                   - lvgl.widget.refresh:
                       id: radar_tds
-                  # update the URL of the online_image: object - this iniates the download
+                  # HA supplies 256px / zoom 7 urls. Swap to 384px / zoom 6: shown scaled 4/3 on screen,
+                  # which is the same map scale as the 256px / zoom 7 frames but 4x the area.
+                  - lambda: |-
+                      id(radar_pu1) = id(radar_url1).state;
+                      id(radar_pt1) = id(radar_ts1).state;
+                      id(radar_pu2) = id(radar_url2).state;
+                      id(radar_pt2) = id(radar_ts2).state;
+                      id(radar_pu3) = id(radar_url3).state;
+                      id(radar_pt3) = id(radar_ts3).state;
+                      id(radar_pu4) = id(radar_url4).state;
+                      id(radar_pt4) = id(radar_ts4).state;
+                      id(radar_pu5) = id(radar_url5).state;
+                      id(radar_pt5) = id(radar_ts5).state;
+                  - lambda: id(radar_busy) = true;
                   - online_image.set_url: 
-                      id: radar0
-                      url: !lambda return id(radar_url0).state;
-                  # nothing more to do here so stop script.  After successful download this block won't run
-                  # when script called second, third time etc. but next will.
+                      id: radar1
+                      url: !lambda |-
+                        std::string u = id(radar_pu1);
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Downloading radar 1/5: %s"
+                      args: [id(radar_pu1).c_str()]
                   - script.stop: script_radar_download
-            # Repeat above for each call of script with updated radar_flag value...
             - if:
                 condition:
                   lambda: return id(radar_flag) == 2;
                 then:
                   - lvgl.widget.show: lbl_downloading
-                  - lambda: id(radar_dlstat) = "url1";
+                  - lambda: id(radar_dlstat) = "2/5";
                   - lvgl.widget.refresh:
                       id: radar_tds
+                  # HA supplies 256px / zoom 7 urls. Swap to 384px / zoom 6: shown scaled 4/3 on screen,
+                  # which is the same map scale as the 256px / zoom 7 frames but 4x the area.
+                  - lambda: id(radar_busy) = true;
                   - online_image.set_url: 
-                      id: radar1
-                      url: !lambda return id(radar_url1).state;
+                      id: radar2
+                      url: !lambda |-
+                        std::string u = id(radar_pu2);
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Downloading radar 2/5: %s"
+                      args: [id(radar_pu2).c_str()]
                   - script.stop: script_radar_download
             - if:
                 condition:
                   lambda: return id(radar_flag) == 3;
                 then:
                   - lvgl.widget.show: lbl_downloading
-                  - lambda: id(radar_dlstat) = "url2";
+                  - lambda: id(radar_dlstat) = "3/5";
                   - lvgl.widget.refresh:
                       id: radar_tds
+                  # HA supplies 256px / zoom 7 urls. Swap to 384px / zoom 6: shown scaled 4/3 on screen,
+                  # which is the same map scale as the 256px / zoom 7 frames but 4x the area.
+                  - lambda: id(radar_busy) = true;
                   - online_image.set_url: 
-                      id: radar2
-                      url: !lambda return id(radar_url2).state;
+                      id: radar3
+                      url: !lambda |-
+                        std::string u = id(radar_pu3);
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Downloading radar 3/5: %s"
+                      args: [id(radar_pu3).c_str()]
                   - script.stop: script_radar_download
             - if:
                 condition:
                   lambda: return id(radar_flag) == 4;
                 then:
                   - lvgl.widget.show: lbl_downloading
-                  - lambda: id(radar_dlstat) = "url3";
+                  - lambda: id(radar_dlstat) = "4/5";
                   - lvgl.widget.refresh:
                       id: radar_tds
+                  # HA supplies 256px / zoom 7 urls. Swap to 384px / zoom 6: shown scaled 4/3 on screen,
+                  # which is the same map scale as the 256px / zoom 7 frames but 4x the area.
+                  - lambda: id(radar_busy) = true;
                   - online_image.set_url: 
-                      id: radar3
-                      url: !lambda return id(radar_url3).state;
+                      id: radar4
+                      url: !lambda |-
+                        std::string u = id(radar_pu4);
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Downloading radar 4/5: %s"
+                      args: [id(radar_pu4).c_str()]
                   - script.stop: script_radar_download
             - if:
                 condition:
                   lambda: return id(radar_flag) == 5;
                 then:
-                  - lambda: id(radar_dlstat) = "url4";
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "5/5";
                   - lvgl.widget.refresh:
                       id: radar_tds
-                  - lvgl.widget.show: lbl_downloading
-                  - online_image.set_url: 
-                      id: radar4
-                      url: !lambda return id(radar_url4).state;
-                  - script.stop: script_radar_download
-            - if:
-                condition:
-                  lambda: return id(radar_flag) == 6;
-                then:
-                  - lambda: id(radar_dlstat) = "url5";
-                  - lvgl.widget.refresh:
-                      id: radar_tds
-                  - lvgl.widget.show: lbl_downloading
+                  # HA supplies 256px / zoom 7 urls. Swap to 384px / zoom 6: shown scaled 4/3 on screen,
+                  # which is the same map scale as the 256px / zoom 7 frames but 4x the area.
+                  - lambda: id(radar_busy) = true;
                   - online_image.set_url: 
                       id: radar5
-                      url: !lambda return id(radar_url5).state;  
+                      url: !lambda |-
+                        std::string u = id(radar_pu5);
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Downloading radar 5/5: %s"
+                      args: [id(radar_pu5).c_str()]
                   - script.stop: script_radar_download
 
   # Satellite image download script            
@@ -559,7 +625,15 @@ script:
             - lvgl.widget.show: lbl_downloading
             - online_image.set_url: 
                 id: satellite1
-                url: !lambda return id(satellite_url).state; 
+                # Use the url from HA if it supplies one, otherwise the file Home Assistant keeps in
+                # /config/www (see ha_satellite_setup.yaml): latest Himawari-9 infrared image of
+                # SE Australia from NASA GIBS, 380x330 with coastlines.  The display can't read the
+                # GIBS server directly - it sends no Content-Length, which online_image needs.
+                url: !lambda |-
+                  std::string u = id(satellite_url).state;
+                  if (u.empty() || u == "unavailable" || u == "unknown")
+                    u = "http://192.168.0.100:8123/local/satellite.png";
+                  return u;
       # Give up after 4 failures
       - if:
           condition:
@@ -570,12 +644,104 @@ script:
                 id(satellite_flag) = 0;
                 id(satellite_errors) = 0;
 
-  # Page selection scripts - any code need on page_prev or page_next can go here
+  # Slow vertical scroll for the forecast text boxes.  For each box, if its label is taller than the box,
+  # slide the label up over ~70 ms per pixel, pause, slide back, pause, and repeat.  Restarted whenever the
+  # text or the box size changes (daily refresh, mode toggle); a box whose text fits just sits still.
+  - id: script_forecast_scroll
+    then:
+      - lambda: |-
+          auto restart = [](lv_obj_t *label, lv_obj_t *box) {
+            lv_anim_delete(label, (lv_anim_exec_xcb_t) lv_obj_set_y);
+            lv_obj_set_y(label, 0);
+            lv_obj_update_layout(box);
+            int over = lv_obj_get_height(label) - lv_obj_get_height(box);
+            if (over <= 0) return;
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, label);
+            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t) lv_obj_set_y);
+            lv_anim_set_values(&a, 0, -over);
+            lv_anim_set_duration(&a, over * 70);
+            lv_anim_set_reverse_duration(&a, over * 70);
+            lv_anim_set_delay(&a, 6000);
+            lv_anim_set_reverse_delay(&a, 4000);
+            lv_anim_set_repeat_delay(&a, 6000);
+            lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+            lv_anim_start(&a);
+          };
+          restart(forecast_text_0, forecast_box_0);
+          restart(forecast_text_1, forecast_box_1);
+          restart(forecast_text_2, forecast_box_2);
+
+  # Right hand forecast panel - double tap toggles between the 7 day forecast (mode 0) and a 3 block view
+  # (mode 1): long text for today, tomorrow and the day after.  The 3 blocks use the separators at y=176 and
+  # y=311 and are 125 / 120 / 120 px tall; text longer than its box scrolls (script_forecast_scroll).
+  - id: script_forecast_toggle
+    then:
+      - lambda: |-
+          id(forecast_mode) = (id(forecast_mode) == 0) ? 1 : 0;
+      - if:
+          condition:
+            lambda: return id(forecast_mode) == 1;
+          then:
+            - lvgl.widget.update:
+                id: forecast_box_0
+                height: 125
+            - lvgl.widget.update:
+                id: forecast_box_1
+                height: 120
+            - lvgl.widget.update:
+                id: forecast_icon_2
+                y: 316
+            - lvgl.widget.update:
+                id: forecast_box_2
+                y: 320
+                height: 120
+            - lvgl.widget.hide: forecast_text_3
+            - lvgl.widget.hide: forecast_text_4
+            - lvgl.widget.hide: forecast_text_5
+            - lvgl.widget.hide: forecast_text_6
+            - lvgl.widget.hide: forecast_icon_3
+            - lvgl.widget.hide: forecast_icon_4
+            - lvgl.widget.hide: forecast_icon_5
+            - lvgl.widget.hide: forecast_icon_6
+            - lvgl.widget.hide: fc_line_2
+            - lvgl.widget.hide: fc_line_3
+            - lvgl.widget.hide: fc_line_5
+            - lvgl.widget.hide: fc_line_6
+          else:
+            - lvgl.widget.update:
+                id: forecast_box_0
+                height: 120
+            - lvgl.widget.update:
+                id: forecast_box_1
+                height: 40
+            - lvgl.widget.update:
+                id: forecast_icon_2
+                y: 226
+            - lvgl.widget.update:
+                id: forecast_box_2
+                y: 230
+                height: 40
+            - lvgl.widget.show: forecast_text_3
+            - lvgl.widget.show: forecast_text_4
+            - lvgl.widget.show: forecast_text_5
+            - lvgl.widget.show: forecast_text_6
+            - lvgl.widget.show: forecast_icon_3
+            - lvgl.widget.show: forecast_icon_4
+            - lvgl.widget.show: forecast_icon_5
+            - lvgl.widget.show: forecast_icon_6
+            - lvgl.widget.show: fc_line_2
+            - lvgl.widget.show: fc_line_3
+            - lvgl.widget.show: fc_line_5
+            - lvgl.widget.show: fc_line_6
+      - lvgl.widget.refresh: forecast_text_1
+      - lvgl.widget.refresh: forecast_text_2
+      - script.execute: script_forecast_scroll
+
+  # Page selection scripts - only here as placeholders in case any processing require on page change
   - id: page_move_prev
     then:
-      # Call to lv_indev_wait_release(lv_indev_get_act()) cancels any touch related 
-      # actions (press, click etc) that may be detected as part of the swipe guesture
-      # see https://github.com/esphome/feature-requests/issues/3059
       - lambda: 'lv_indev_wait_release(lv_indev_get_act());'
       - lvgl.page.previous:
 
@@ -583,6 +749,91 @@ script:
     then:
       - lambda: 'lv_indev_wait_release(lv_indev_get_act());' 
       - lvgl.page.next:
+
+# Radar animation: step through the frames oldest to newest, holding on the newest for two steps.
+# The label shows the time of the frame on screen.  Frames 5 and 6 of the 7 step cycle are the hold.
+interval:
+  - interval: 700ms
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: return id(radar_ready);
+              - not:
+                  lvgl.is_paused:
+          then:
+            - lambda: id(radar_frame) = (id(radar_frame) + 1) % 7;
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 0;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar5
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st5);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 1
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 1;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar4
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st4);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 2
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 2;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar3
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st3);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 3
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 3;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar2
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st2);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 4
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 4;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar1
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st1);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 5
+  # Log free PSRAM once a minute to keep an eye on memory use
+  - interval: 60s
+    then:
+      - logger.log:
+          format: "PSRAM free %u (largest block %u), internal free %u"
+          args: ['(unsigned) heap_caps_get_free_size(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL)']
 
 # Sun required for sun elevation sensor used for day/night comparisons
 sun:
@@ -612,6 +863,63 @@ globals:
     initial_value: "true"
   # Flag/counter for downloading radar images
   - id: radar_flag
+    type: int
+    initial_value: "0"
+  # True once a full set of radar frames has been downloaded - the animation script waits for this
+  - id: radar_ready
+    type: bool
+    initial_value: "false"
+  # Snapshot of the radar urls and timestamps taken when a download cycle starts.  The HA template shifts
+  # its frames whenever Rainviewer publishes a new one, which would otherwise make two frames in one cycle
+  # download the same image.  pu = url, pt = timestamp (this cycle), st = timestamp of the frames shown.
+  - id: radar_pu1
+    type: std::string
+  - id: radar_pt1
+    type: std::string
+  - id: radar_st1
+    type: std::string
+  - id: radar_pu2
+    type: std::string
+  - id: radar_pt2
+    type: std::string
+  - id: radar_st2
+    type: std::string
+  - id: radar_pu3
+    type: std::string
+  - id: radar_pt3
+    type: std::string
+  - id: radar_st3
+    type: std::string
+  - id: radar_pu4
+    type: std::string
+  - id: radar_pt4
+    type: std::string
+  - id: radar_st4
+    type: std::string
+  - id: radar_pu5
+    type: std::string
+  - id: radar_pt5
+    type: std::string
+  - id: radar_st5
+    type: std::string
+  # Right hand forecast panel: 0 = 7 day forecast, 1 = long text for today and tomorrow (double tap toggles)
+  - id: forecast_mode
+    type: int
+    initial_value: "0"
+  # Time (millis) of the last tap on the forecast panel, and whether the latest tap completed a double tap
+  - id: forecast_last_tap
+    type: uint32_t
+    initial_value: "0"
+  - id: forecast_double_tap
+    type: bool
+    initial_value: "false"
+  # True while a radar frame download is in progress - stops the 12 second timer starting another one
+  # (after a long blocked request ESPHome fires the missed timer ticks back to back)
+  - id: radar_busy
+    type: bool
+    initial_value: "false"
+  # Current step of the radar animation
+  - id: radar_frame
     type: int
     initial_value: "0"
   # Counter for radar download errors
@@ -646,7 +954,7 @@ globals:
   # array for presence sensor activation times, must match lvgl dropdowns
   - id: time_array
     type: std::vector<std::string>
-    initial_value: '{"18:00:00", "19:00:00", "20:00:00", "21:00:00", "22:00:00", "23:00:00", "0:00:00", "1:00:00", "2:00:00", "3:00:00", "4:00:00", "5:00:00", "6:00:00", "7:00:00", "8:00:00"}'
+    initial_value: '{"18:00:00", "19:00:00", "20:00:00", "21:00:00", "22:00:00", "23:00:00", "00:00:00", "01:00:00", "02:00:00", "03:00:00", "04:00:00", "05:00:00", "06:00:00", "07:00:00", "08:00:00"}'
   # storage for start and end times of presence checking
   - id: presence_end_index
     type: int
@@ -660,14 +968,16 @@ globals:
 # http_request block required for online_image: - note the watchdog timeout needs to longer 
 # than the timeout: value - this prevents rebouts when http_request: blocks EVERYTHING ^&%^&%%$!!
 http_request:
-  timeout: 11s
-  watchdog_timeout: 30s
+  timeout: 20s
+  # 2026.x derives 3 x timeout + 1s for the request watchdog; keep ours at least that long
+  watchdog_timeout: 61s
 
 # Online images
 online_image: 
   # Temperature plot sourced from a HA history graph using the Puppet add-on
   # from https://github.com/balloob/home-assistant-addons repository
-  - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&eink=2&invert"
+  # - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&dark=&wait=3000&lang=en"
+  - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&colors=ADD8E6%2C+000000%2C+ffffff%2C+FFDE21&palette_colors=ADD8E6%2C+000000%2C+ffffff%2C+FFDE21&dark=&wait=3000&lang=en"
     id: templot
     format: png
     type: RGB565
@@ -681,11 +991,30 @@ online_image:
             id: templot_img
             src: templot
 
+  # 14day temp and rain history using Apexcharts and the Puppet add-on
+  # from https://github.com/balloob/home-assistant-addons repository
+  - url: "http://192.168.0.100:10000/dashboard-cast/history?viewport=780x360&wait=8500&dark"
+    id: plot14day
+    format: png
+    type: RGB565
+    # note we simply update this every 10 mins
+    update_interval: 5min
+    # If it doesn't work - either leave empty or show previous
+    on_download_finished:
+      then: 
+        - delay: 1s
+        - lvgl.image.update:
+            id: hist14day_img
+            src: plot14day
+
+
   # Radar images - urls are generated by template in HA, then these objects are 
   # updated every 10 minutes by the radar download script.  Once the script is started it runs every 12
-  # seconds untill error count exceeded or all images downloaded.  See script for comment on why this approach.
+  # seconds untill error count exceeded or all images downloaded.  Frames are 384x384 with an alpha channel
+  # (3 bytes/pixel) and are scaled up 4/3 on screen, so they look like 512px frames but fit in PSRAM.
+  # (chroma_key transparency does not work with LVGL 9 - it just draws the key colour.)
   - url: "https://google.com/dummy.png"
-    id: radar0
+    id: radar1
     format: png
     type: RGB565
     transparency: alpha_channel
@@ -693,25 +1022,16 @@ online_image:
       # If the download of this image is successful, change flag so next will be initiated 
       # on next script run
       then: 
-        - lambda: id(radar_flag) = 2;
+        - lambda: |-
+            id(radar_flag) = 2;
+            id(radar_busy) = false;
     on_error: 
-      # If the download fails, increment error flag.  The radar flag is not update thus
+      # If the download fails, increment error flag.  The radar flag is not updated thus
       # the radar download script will attempt this image again on next run
       then:
-        - lambda: ++id(radar_errors);
-
-  # do the rest of the images one at a time
-  - url: "https://google.com/dummy.png"
-    id: radar1
-    format: png
-    type: RGB565
-    transparency: alpha_channel
-    on_download_finished:
-      then: 
-        - lambda: id(radar_flag) = 3;
-    on_error: 
-      then:
-        - lambda: ++id(radar_errors);
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
 
   - url: "https://google.com/dummy.png"
     id: radar2
@@ -719,11 +1039,19 @@ online_image:
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
+      # If the download of this image is successful, change flag so next will be initiated 
+      # on next script run
       then: 
-        - lambda: id(radar_flag) = 4;
+        - lambda: |-
+            id(radar_flag) = 3;
+            id(radar_busy) = false;
     on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
       then:
-        - lambda: ++id(radar_errors);
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
 
   - url: "https://google.com/dummy.png"
     id: radar3
@@ -731,102 +1059,132 @@ online_image:
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
+      # If the download of this image is successful, change flag so next will be initiated 
+      # on next script run
       then: 
-        - lambda: id(radar_flag) = 5;
+        - lambda: |-
+            id(radar_flag) = 4;
+            id(radar_busy) = false;
     on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
       then:
-        - lambda: ++id(radar_errors);
-  
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
   - url: "https://google.com/dummy.png"
     id: radar4
     format: png
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
+      # If the download of this image is successful, change flag so next will be initiated 
+      # on next script run
       then: 
-        - lambda: id(radar_flag) = 6;
+        - lambda: |-
+            id(radar_flag) = 5;
+            id(radar_busy) = false;
     on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
       then:
-        - lambda: ++id(radar_errors);
- 
-  # last image download differs from first 5
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
   - url: "https://google.com/dummy.png"
     id: radar5
     format: png
     type: RGB565
     transparency: alpha_channel
     on_download_finished:
-      # if we are successful on the last, force update on the animimg, hide the downloading icon,
-      # reset all flags and counters and update download status text and timestamp of radar images
+      # last frame done: reset flags and counters, hide the downloading icon, let the animation run
       then: 
-        - lvgl.animimg.update:
-            id: radar
-            src: [ radar5, radar4, radar3, radar2, radar1, radar0 ]
-        - lvgl.animimg.start: radar
-        - lvgl.widget.hide: lbl_downloading
         - lambda: |-
             id(radar_dlstat) = "-";
             id(radar_flag) = 0;
             id(radar_errors) = 0;
+            id(radar_ready) = true;
+            id(radar_busy) = false;
+            id(radar_st1) = id(radar_pt1);
+            id(radar_st2) = id(radar_pt2);
+            id(radar_st3) = id(radar_pt3);
+            id(radar_st4) = id(radar_pt4);
+            id(radar_st5) = id(radar_pt5);
+            // HA only gives the time of each frame (e.g. "3:00 PM") - add the date from the current time.
+            // A frame time later than now (by more than 10 min) must be from before midnight.
+            auto now = id(my_time).now();
+            auto dated = [&](const std::string &t) -> std::string {
+              int h = 0, m = 0;
+              char ap[3] = {0};
+              if (!now.is_valid() || sscanf(t.c_str(), "%d:%d %2s", &h, &m, ap) != 3) return t;
+              if (h == 12) h = 0;
+              if (ap[0] == 'P' || ap[0] == 'p') h += 12;
+              time_t ts = now.timestamp;
+              if (h * 60 + m > now.hour * 60 + now.minute + 10) ts -= 86400;
+              return esphome::ESPTime::from_epoch_local(ts).strftime("%a %d %b ") + t;
+            };
+            id(radar_st1) = dated(id(radar_st1));
+            id(radar_st2) = dated(id(radar_st2));
+            id(radar_st3) = dated(id(radar_st3));
+            id(radar_st4) = dated(id(radar_st4));
+            id(radar_st5) = dated(id(radar_st5));
+        - lvgl.widget.hide: lbl_downloading
         - lvgl.widget.refresh:
             id: radar_tds
-        - lvgl.widget.refresh: 
-            id: radar_ts
     on_error: 
-      # error handling is same as other images - update error count then this download 
-      # will get tried again on next script run
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
       then:
-        - lambda: ++id(radar_errors);
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
 
-  # Staellite image - only one file every 10 minutes
-  - url: "https://google.com/dummy.png"
+  # Satellite image - a PNG served by Home Assistant from /config/www (Himawari-9 infrared via NASA GIBS)
+  - url: "http://192.168.0.100:8123/local/satellite.png"
     id: satellite1
     format: png
     type: RGB565
-    transparency: alpha_channel
     on_download_finished:
-      # successful download
       then: 
         # update the image
         - lvgl.image.update:
             id: satellite
             src: satellite1
-        # High the dowloading icon
+        # hide the downloading icon
         - lvgl.widget.hide: lbl_downloading
-        # reset flags and couters
+        # reset flags and counters
         - lambda: id(satellite_flag) = 0;
         - lambda: id(satellite_errors) = 0;
         # update the timestamp text
         - lvgl.widget.refresh: 
             id: sat_ts
     on_error: 
-      # if download error - stop script, update error counter and restart script
+      # if download error - stop script and count the error.  Retry (after the script's 15s delay) up to
+      # 4 times, then give up until the next scheduled refresh.  (The give-up check has to be here:
+      # script.stop ends the script before it could reach a check at the end of script_satellite_download.)
       then:
         - script.stop: script_satellite_download    
         - lambda: ++id(satellite_errors);
-        - script.execute: script_satellite_download    
+        - if:
+            condition:
+              lambda: return id(satellite_errors) < 4;
+            then:
+              - script.execute: script_satellite_download    
+            else:
+              - lvgl.widget.hide: lbl_downloading
+              - lambda: |-
+                  id(satellite_flag) = 0;
+                  id(satellite_errors) = 0;
 
 # Static images
 image: 
-  # Background image for radar
-  - file: "map1b.png"
+  # Base map for the radar panel: 380x330 window, same scale and centre as the 512px zoom 6 radar frames
+  # (generated from Esri street map tiles with town labels and a marker for Rutherglen)
+  - file: "radar_base.png"
     id: background_map
     type: RGB565
-  # foreground overlay for radar - place names and location 
-  - file: "map1f.png"
-    id: foreground_map
-    type: RGB565
-    transparency: alpha_channel
-  # Background map for statellite image
-  - file: "map2.png"
-    id: satellite_map
-    type: RGB565
-    transparency: alpha_channel 
-  # foreground overlay for satellite - borders and coastlines
-  - file: "map4.png"
-    id: base_map
-    type: RGB565
-    transparency: alpha_channel 
 
 # All sensors sourced from HA - Ecowitt weather station sensors
 # BOM weather forecast sensors using custom template sesnors mostly
@@ -1012,9 +1370,9 @@ text_sensor:
         - lvgl.widget.update:
             id: dir_indicator
             x: !lambda |-
-              return  90 + 50 - 6 + (89 * (cos((id(dir)-90)*PI/180)));
+              return  90 + 50 - 6 + (89 * (cos((id(dir)-90)*M_PI/180)));
             y: !lambda |-
-              return  90 + 140 - 6 + (89 * (sin((id(dir)-90)*PI/180)));
+              return  90 + 140 - 6 + (89 * (sin((id(dir)-90)*M_PI/180)));
         # clear canvas for wind sticks
         - lvgl.canvas.fill:
             id: wind_stick
@@ -1022,25 +1380,26 @@ text_sensor:
         # Draw wind stick - again can use yaml loops becase they don't work.  Use c++ LVGL code
         # for drawing
         - lambda: |-
+            lv_layer_t layer;
+            lv_canvas_init_layer(wind_stick, &layer);
             lv_draw_line_dsc_t line_dsc;
             lv_draw_line_dsc_init(&line_dsc);
             line_dsc.width = 1;
             line_dsc.color = lv_palette_lighten(LV_PALETTE_GREEN, 3);
             line_dsc.opa = LV_OPA_COVER;
             line_dsc.round_start = 0;
-            line_dsc.round_end = 0;      
+            line_dsc.round_end = 0;
             // loop through array to draw direction / force lines for last 30 readings
             for (int ax = 0; ax < 30; ++ax)  {
-              int x1 = 90 + (90 * (cos((id(hist_dir)[ax]-90)*PI/180)));
-              int y1 = 90 + (90 * (sin((id(hist_dir)[ax]-90)*PI/180)));
-              int x2 = 90 + ((90-(70*id(hist_wind)[ax]/id(maxwind))) * (cos((id(hist_dir)[ax]-90)*PI/180)));
-              int y2 = 90 + ((90-(70*id(hist_wind)[ax]/id(maxwind))) * (sin((id(hist_dir)[ax]-90)*PI/180)));
-              lv_point_t line_points[2] = {
-                { static_cast<lv_coord_t>(x1), static_cast<lv_coord_t>(y1) },
-                { static_cast<lv_coord_t>(x2), static_cast<lv_coord_t>(y2) }
-              };
-              lv_canvas_draw_line(wind_stick, line_points, 2, &line_dsc);
+              float a = (id(hist_dir)[ax]-90)*M_PI/180;
+              float r2 = 90-(70*id(hist_wind)[ax]/id(maxwind));
+              line_dsc.p1.x = 90 + 90*cos(a);
+              line_dsc.p1.y = 90 + 90*sin(a);
+              line_dsc.p2.x = 90 + r2*cos(a);
+              line_dsc.p2.y = 90 + r2*sin(a);
+              lv_draw_line(&layer, &line_dsc);
             }
+            lv_canvas_finish_layer(wind_stick, &layer);
 
   # Wind speed from Ecowitt,.
   - platform: homeassistant
@@ -1081,58 +1440,74 @@ text_sensor:
     id: named_dir
     on_value:
       # we chose this sensor to perform first update scripts - no particular reasoning why this one chosen
-      then: 
-        - if:
-            condition:
-              lambda: return id(first_run);
-            then: 
-              - component.update: templot 
-              - script.execute: script_obs
-              - script.execute: script_hours
-              - script.execute: script_days
-              - script.execute: script_radar_download
-              - lambda: id(satellite_flag) = 1;
-              - script.execute: script_satellite_download
-              - lambda: id(first_run) = false;
+      then:
         - lvgl.label.update:
             id: dir_text
             text: !lambda return x;
+        - if:
+            condition:
+              lambda: return id(first_run);
+            then:
+              # Clear the flag straight away so later updates of this sensor can't start this block again.
+              - lambda: id(first_run) = false;
+              # This sensor's state arrives early in Home Assistant's burst of initial states.
+              # Wait (non-blocking) so the rest of the burst - forecast, hourly etc - is processed
+              # before we refresh the labels. The http_request calls below block the main loop,
+              # so they must come after this delay too.
+              - delay: 10s
+              - script.execute: script_obs
+              - script.execute: script_hours
+              - script.execute: script_days
+              - component.update: templot
+              - component.update: plot14day
+              - script.execute: script_radar_download
+              - lambda: id(satellite_flag) = 1;
+              - script.execute: script_satellite_download
 
-  # Radar image urls plus timestamp of latest image.  Sourced from custom HA template 
-  # that uses Rainviewer.com API
-  - platform: homeassistant
-    entity_id: sensor.template_weather_display_radar
-    attribute: url0
-    id: radar_url0
+  # Radar image urls plus timestamps of each frame.  Sourced from custom HA template 
+  # that uses Rainviewer.com API (url1 / timestamp1 is the newest frame)
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: timestamp1
-    id: radar_timestamp
+    id: radar_ts1
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url1
     id: radar_url1
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
+    attribute: timestamp2
+    id: radar_ts2
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
     attribute: url2
     id: radar_url2
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp3
+    id: radar_ts3
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: url3
     id: radar_url3
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
+    attribute: timestamp4
+    id: radar_ts4
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
     attribute: url4
     id: radar_url4
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
-    attribute: url5
-    id: radar_url5
+    attribute: timestamp5
+    id: radar_ts5
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
-    id: radar_urls
+    attribute: url5
+    id: radar_url5
 
-  # satellite image url and timestamp from HA template / Rainviewer
+  # satellite image url and timestamp from HA template (optional - see script_satellite_download)
   - platform: homeassistant
     entity_id: sensor.template_weather_display_radar
     attribute: urls
@@ -1141,6 +1516,15 @@ text_sensor:
     entity_id: sensor.template_weather_display_radar
     attribute: timestamps
     id: satellite_timestamp
+  # Time (UTC) of the newest Himawari image, from the command_line sensor in ha_satellite_setup.yaml.
+  # Shown on the satellite panel converted to local time.
+  - platform: homeassistant
+    entity_id: sensor.himawari_latest
+    id: sat_time_utc
+    on_value:
+      then:
+        - lvgl.widget.refresh:
+            id: sat_ts
 
   # Ecowitt total rain since midnight - updated real time
   - platform: homeassistant
@@ -1177,6 +1561,16 @@ text_sensor:
   - platform: homeassistant
     id: forecast0
     entity_id: sensor.template_weather_display_forecast0
+    attribute: long_text
+  # Long text for tomorrow and the day after, from the HA template sensors (attribute long_text) which
+  # build "<day>: min/max - <full BOM extended text>" - the same as forecast0 does for today.
+  - platform: homeassistant
+    id: forecast1_long
+    entity_id: sensor.template_weather_display_forecast1
+    attribute: long_text
+  - platform: homeassistant
+    id: forecast2_long
+    entity_id: sensor.template_weather_display_forecast2
     attribute: long_text
   - platform: homeassistant
     id: forecasttoday
@@ -1431,28 +1825,28 @@ text_sensor:
               }
               snprintf(buf, sizeof(buf), "%s", icon.c_str());
               return buf;
-  # - platform: homeassistant
-  #   id: light3_remote_light
-  #   entity_id: light.hallway_lights
-  #   on_value:
-  #     then:
-  #       - lvgl.widget.update:
-  #           id: light3
-  #           state:
-  #             checked: !lambda return (0 == x.compare(std::string{"on"}));
-  #             disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
-  #       - lvgl.label.update:
-  #           id: icon_light3
-  #           text: !lambda |-
-  #             static char buf[10];
-  #             std::string icon;
-  #             if (0 == x.compare(std::string{"on"})) {
-  #                 icon = "\U000F0335";
-  #             } else {
-  #                 icon = "\U000F0336";
-  #             }
-  #             snprintf(buf, sizeof(buf), "%s", icon.c_str());
-  #             return buf;
+  - platform: homeassistant
+    id: light3_remote_light
+    entity_id: light.man_cave_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light3
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light3
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
   - platform: homeassistant
     id: light4_remote_light
     entity_id: light.front_verandah
@@ -2080,7 +2474,7 @@ lvgl:
                 align: CENTER
                 text_align: LEFT
                 text_color: BLACK
-                text: "Presnce turn off time:"
+                text: "Presence turn off time:"
                 pad_top: 6
                 grid_cell_column_pos: 2
                 grid_cell_row_pos: 4
@@ -2587,9 +2981,11 @@ lvgl:
         - obj:
             id: hourly_forecast
             x: 15
-            y: 360
+            y: 357
             width: 440
-            height: 95
+            height: 98
+            # LVGL 9.5 shows a vertical scrollbar here; the strip only needs to scroll sideways
+            scroll_dir: HOR
             bg_color: BLACK
             border_width: 0
             layout:
@@ -3348,39 +3744,93 @@ lvgl:
         # 7 day forecast sourced from BOM
         # day 0 (today) uses full long forecast data (more than 255 chars) from 
         # BOM sensor attribute
-        - label:
-            id: forecast_text_0
+        # The text labels sit inside fixed size boxes that clip them.  If the text is taller than its box,
+        # script_forecast_scroll slowly slides the label up and down (the icons don't move).
+        - obj:
+            id: forecast_box_0
             x: 550
             y: 45
-            height: 120
             width: 240
-            long_mode: WRAP
-            text_align: LEFT
-            text: !lambda return id(forecast0).state;
-            styles: forecast_text
-            text_color: WHITE
-        - label:
-            id: forecast_text_1
+            height: 120
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: forecast_text_0
+                  x: 0
+                  y: 0
+                  width: 240
+                  height: SIZE_CONTENT
+                  long_mode: WRAP
+                  text_align: LEFT
+                  text: !lambda return id(forecast0).state;
+                  styles: forecast_text
+                  text_color: WHITE
+        - obj:
+            id: forecast_box_1
             x: 550
             y: 185
-            height: 40
             width: 240
-            long_mode: WRAP
-            text_align: LEFT
-            text: !lambda return id(forecast1).state;
-            styles: forecast_text
-            text_color: WHITE
-        - label:
-            id: forecast_text_2
+            height: 40
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: forecast_text_1
+                  x: 0
+                  y: 0
+                  width: 240
+                  height: SIZE_CONTENT
+                  long_mode: WRAP
+                  text_align: LEFT
+                  # short text in 7 day mode, long text in today/tomorrow mode
+                  text: !lambda |-
+                    // 7 day mode: short text.  3 block mode: the long text (already starts with the day and
+                    // min/max), or the short text if the long text hasn't arrived
+                    std::string s = id(forecast1).state;
+                    if (id(forecast_mode) == 0) return s;
+                    std::string ext = id(forecast1_long).state;
+                    if (ext.size() < 20 || ext == "unknown" || ext == "unavailable") return s;
+                    return ext;
+                  styles: forecast_text
+                  text_color: WHITE
+        - obj:
+            id: forecast_box_2
             x: 550
             y: 230
-            height: 40
             width: 240
-            long_mode: WRAP
-            text_align: LEFT
-            text: !lambda return id(forecast2).state;
-            styles: forecast_text
-            text_color: WHITE
+            height: 40
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - label:
+                  id: forecast_text_2
+                  x: 0
+                  y: 0
+                  width: 240
+                  height: SIZE_CONTENT
+                  long_mode: WRAP
+                  text_align: LEFT
+                  # short text in 7 day mode, long text in the 3 block mode
+                  text: !lambda |-
+                    // 7 day mode: short text.  3 block mode: the long text (already starts with the day and
+                    // min/max), or the short text if the long text hasn't arrived
+                    std::string s = id(forecast2).state;
+                    if (id(forecast_mode) == 0) return s;
+                    std::string ext = id(forecast2_long).state;
+                    if (ext.size() < 20 || ext == "unknown" || ext == "unavailable") return s;
+                    return ext;
+                  styles: forecast_text
+                  text_color: WHITE
         - label:
             id: forecast_text_3
             x: 550
@@ -3498,36 +3948,42 @@ lvgl:
             text_color: WHITE
         # borders for forecast data
         - line:
+            id: fc_line_1
             points: 
               - 520, 176
               - 780, 176
             line_color: LIGHTBLUE
             line_width: 2
         - line:
+            id: fc_line_2
             points: 
               - 520, 221
               - 780, 221
             line_color: LIGHTBLUE
             line_width: 2
         - line:
+            id: fc_line_3
             points: 
               - 520, 266
               - 780, 266
             line_color: LIGHTBLUE
             line_width: 2
         - line:
+            id: fc_line_4
             points: 
               - 520, 311
               - 780, 311
             line_color: LIGHTBLUE
             line_width: 2
         - line:
+            id: fc_line_5
             points: 
               - 520, 356
               - 780, 356
             line_color: LIGHTBLUE
             line_width: 2
         - line:
+            id: fc_line_6
             points: 
               - 520, 401
               - 780, 401
@@ -3539,6 +3995,35 @@ lvgl:
               - 490, 445
             line_color: LIGHTBLUE
             line_width: 2
+        # Invisible touch area over the forecast panel - double tap switches the forecast view
+        - obj:
+            id: forecast_touch
+            x: 492
+            y: 35
+            width: 308
+            height: 410
+            bg_opa: TRANSP
+            border_width: 0
+            radius: 0
+            pad_all: 0
+            scrollable: false
+            # LVGL's own double click timing is fussy, so time two short clicks ourselves: 700 ms window
+            on_short_click:
+              then:
+                - lambda: |-
+                    uint32_t now = millis();
+                    if (id(forecast_last_tap) != 0 && (now - id(forecast_last_tap)) < 700) {
+                      id(forecast_last_tap) = 0;
+                      id(forecast_double_tap) = true;
+                    } else {
+                      id(forecast_last_tap) = now;
+                      id(forecast_double_tap) = false;
+                    }
+                - if:
+                    condition:
+                      lambda: return id(forecast_double_tap);
+                    then:
+                      - script.execute: script_forecast_toggle
     
     # Radar and satellite
     - id: radar_page
@@ -3554,92 +4039,173 @@ lvgl:
       on_swipe_left:
         then:
           - script.execute: page_move_next  
-      # Map images - there is room on this page for more data but at the moment just 2 images
       widgets:
-        # background static image matching zoom and location of radar images
-        - image: 
-            id: map1
-            x: 90
-            y: 110
-            src: background_map
-        # middle layer is animimg made up of downloaded radra images, radar5 is oldest, radar0
-        # is newest 
-        - animimg: 
-            id: radar
-            x: 90
-            y: 110
-            src: [ radar5, radar4, radar3, radar2, radar1, radar0 ]
-            duration: 6000ms
-            auto_start: false
-        # Top overlay is major town locations and names
-        - image: 
-            id: map1f
-            x: 90
-            y: 110
-            src: foreground_map
-        # background static map of SE australia - matches satellite zoom and location
-        - image:
-            id: basemap
-            x: 454
-            y: 110
-            src: base_map
-        # middle layer is IR satellite view downloaded from Rainviewer
-        - image:
-            id: satellite
-            x: 454
-            y: 110
-            src: satellite1
-        # top overlay is state borders and coastlines - visible over cloud layers
-        - image: 
-            id: map2
-            x: 454
-            y: 110
-            src: satellite_map
-        # Headings and timestam, status data labels
         - label:
-            x: 90
-            y: 90
+            x: 15
+            y: 48
             text_font: calibri_19
             text_color: WHITE
             text_align: LEFT
             text: "Radar"            
         - label:
-            id: radar_ts
-            align_to:
-              id: map1
-              align: OUT_BOTTOM_LEFT
-              y: 3
-            text_font: calibri_13
-            text_color: WHITE
-            text_align: RIGHT
-            text: !lambda return id(radar_timestamp).state;
-        - label:
-            id: radar_tds
-            align_to:
-              id: radar_ts
-              align: OUT_BOTTOM_LEFT
-              x: 3
-            text_font: calibri_13
-            text_color: WHITE
-            text: !lambda return id(radar_dlstat);
-        - label:
-            x: 454
-            y: 90
+            x: 405
+            y: 48
             text_font: calibri_19
             text_color: WHITE
             text_align: LEFT
             text: "Satellite"            
+        # Radar: a 380x330 window (plus 1px border) onto the middle of the scaled radar frames
+        - obj:
+            id: radar_panel
+            x: 14
+            y: 71
+            width: 382
+            height: 332
+            bg_color: BLACK
+            border_width: 1
+            border_color: 0xB0B0B0
+            radius: 7
+            clip_corner: true
+            pad_all: 0
+            scrollable: false
+            widgets:
+              # static base map (same size as the window)
+              - image: 
+                  id: map1
+                  x: 0
+                  y: 0
+                  src: background_map
+              # current radar frame (384x384, scaled 4/3 about its centre), positioned so the centre of
+              # the frame sits at the centre of the 380x330 window
+              - image: 
+                  id: radar_img
+                  x: -2
+                  y: -27
+                  pivot_x: 192
+                  pivot_y: 192
+                  scale: 1.3333
+                  src: radar5
+        # progress bar under the radar - one step per frame
+        - bar:
+            id: radar_progress
+            x: 15
+            y: 404
+            width: 380
+            height: 6
+            radius: 0
+            min_value: 0
+            max_value: 5
+            value: 0
+            bg_color: 0x303030
+            indicator:
+              bg_color: 0x2F8CD8
+        # time of the frame being shown, and download status
         - label:
-            id: sat_ts
-            align_to:
-              id: map2
-              align: OUT_BOTTOM_LEFT
-              y: 3
+            id: radar_ts
+            x: 15
+            y: 414
             text_font: calibri_13
             text_color: WHITE
             text_align: LEFT
-            text: !lambda return id(satellite_timestamp).state;
+            text: !lambda return id(radar_ts5).state;
+        - label:
+            id: radar_tds
+            x: 255
+            y: 414
+            width: 140
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: RIGHT
+            text: !lambda return id(radar_dlstat);
+        # Satellite: single image, same size as the radar window
+        - obj:
+            id: sat_panel
+            x: 404
+            y: 71
+            width: 382
+            height: 332
+            bg_color: BLACK
+            border_width: 1
+            border_color: 0xB0B0B0
+            radius: 7
+            clip_corner: true
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - image:
+                  id: satellite
+                  x: 0
+                  y: 0
+                  src: satellite1
+        - label:
+            id: sat_ts
+            x: 405
+            y: 414
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: LEFT
+            # sat_time_utc is e.g. 2026-11-14T04:00:00Z - convert to local and show date and time
+            text: !lambda |-
+              std::string s = id(sat_time_utc).state;
+              if (s.size() < 19 || s[4] != '-') return std::string("-");
+              esphome::ESPTime u{};
+              u.year = atoi(s.substr(0, 4).c_str());
+              u.month = atoi(s.substr(5, 2).c_str());
+              u.day_of_month = atoi(s.substr(8, 2).c_str());
+              u.hour = atoi(s.substr(11, 2).c_str());
+              u.minute = atoi(s.substr(14, 2).c_str());
+              u.second = atoi(s.substr(17, 2).c_str());
+              u.recalc_timestamp_utc(false);
+              auto l = esphome::ESPTime::from_epoch_local(u.timestamp);
+              int h = l.hour % 12;
+              if (h == 0) h = 12;
+              char buf[40];
+              snprintf(buf, sizeof(buf), "%s %d:%02d %s", l.strftime("%a %d %b").c_str(), h, l.minute, l.hour >= 12 ? "PM" : "AM");
+              return std::string(buf);
 
+    # 14 day history page
+    - id: hist_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen 14 Day History"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+      # History image from Apexcharts via Puppeteer
+      widgets:
+        # labels for each part of image - 2 labels as there are 2 charts
+        - label:
+            align_to:
+              id: hist14day_img
+              align: OUT_TOP_LEFT
+            text: "14 Day Temperature"
+            text_font: calibri_17
+            text_color: WHITE
+            pad_all: 3
+        # note the align_to: does not really seam to work unless you specift the height and width
+        - label:
+            align_to:
+              id: hist14day_img
+              align: OUT_TOP_LEFT
+              x: 390
+            text: "14 Day Rainfall"
+            text_font: calibri_17
+            text_color: WHITE
+            text_align: LEFT
+            pad_all: 3
+        # image from Apexcharts
+        - image: 
+            id: hist14day_img
+            x: 10
+            y: 75
+            src: plot14day
+  
     # Page for light control - some spare buttons
     # yaml is mostly copied drom the LVGL Tips & Tricks page "Toggle state icon button"
     # therfe may be a way of making this less "bulky" - for future date
@@ -3666,8 +4232,7 @@ lvgl:
             pad_all: 6
             bg_opa: TRANSP
             border_opa: TRANSP
-            # press_lok ignores triggers if focus moves off button, e.g a swipe guesture
-            press_lock: FALSE
+            press_lock: false
             # 4 x 3 grid for buttons - makes them big enough to display both icon and label
             layout: 
               type: GRID 
@@ -3701,6 +4266,11 @@ lvgl:
                         action: light.toggle
                         data:
                           entity_id: light.office_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.office_lights
               - button:
                   id: light2
                   grid_cell_column_pos: 0
@@ -3724,14 +4294,17 @@ lvgl:
                         action: light.toggle
                         data:
                           entity_id: light.hallway_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.hallway_lights
               - button:
                   id: light3
                   grid_cell_column_pos: 0
                   grid_cell_row_pos: 2
                   grid_cell_x_align: STRETCH
                   grid_cell_y_align: STRETCH
-                  state: 
-                    disabled: TRUE
                   widgets:
                     - label:
                         id: icon_light3
@@ -3743,12 +4316,17 @@ lvgl:
                         align_to: 
                           id: icon_light3
                           align: OUT_BOTTOM_MID
-                        text: "--"
+                        text: "Man Cave"
                   on_short_click:
                     - homeassistant.action:
                         action: light.toggle
                         data:
-                          entity_id: light.office_lights
+                          entity_id: light.man_cave_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.man_cave_lights
               - button:
                   id: light4
                   grid_cell_column_pos: 1
@@ -3770,6 +4348,11 @@ lvgl:
                   on_short_click:
                     - homeassistant.action:
                         action: light.toggle
+                        data:
+                          entity_id: light.front_verandah
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
                         data:
                           entity_id: light.front_verandah
               - button:
@@ -3795,6 +4378,11 @@ lvgl:
                         action: light.toggle
                         data:
                           entity_id: light.front_garden_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.front_garden_lights
               - button:
                   id: light6
                   grid_cell_column_pos: 1
@@ -3816,6 +4404,11 @@ lvgl:
                   on_short_click:
                     - homeassistant.action:
                         action: light.toggle
+                        data:
+                          entity_id: light.side_verandah_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
                         data:
                           entity_id: light.side_verandah_lights
               - button:
@@ -3841,6 +4434,11 @@ lvgl:
                         action: light.toggle
                         data:
                           entity_id: light.loungeroom_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.loungeroom_lights
               - button:
                   id: light8
                   grid_cell_column_pos: 2
@@ -3862,6 +4460,11 @@ lvgl:
                   on_short_click:
                     - homeassistant.action:
                         action: light.toggle
+                        data:
+                          entity_id: light.sunroom
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
                         data:
                           entity_id: light.sunroom
               - button:
@@ -3889,6 +4492,11 @@ lvgl:
                         action: light.toggle
                         data:
                           entity_id: light.office_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.office_lights
               - button:
                   id: light10
                   grid_cell_column_pos: 3
@@ -3896,7 +4504,7 @@ lvgl:
                   grid_cell_x_align: STRETCH
                   grid_cell_y_align: STRETCH
                   widgets:
-                    - label:
+                    - label: 
                         id: icon_light10
                         align: CENTER
                         text_font: mdi_42
@@ -3910,6 +4518,11 @@ lvgl:
                   on_short_click:
                     - homeassistant.action:
                         action: homeassistant.toggle
+                        data:
+                          entity_id: switch.backyard_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: homeassistant.turn_off
                         data:
                           entity_id: switch.backyard_lights
               - button:
@@ -3935,6 +4548,11 @@ lvgl:
                         action: light.toggle
                         data:
                           entity_id: light.bbq_light
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.bbq_light
               - button:
                   id: light12
                   grid_cell_column_pos: 3
@@ -3956,5 +4574,10 @@ lvgl:
                   on_short_click:
                     - homeassistant.action:
                         action: homeassistant.toggle
+                        data:
+                          entity_id: group.garage_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: homeassistant.turn_off
                         data:
                           entity_id: group.garage_lights
