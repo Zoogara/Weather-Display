@@ -1,0 +1,875 @@
+# screentest package: radar - radar and satellite page: HA-served frames, download scripts, animation
+
+script:
+
+  # Radar download script - runs every 2 seconds while radar_flag is non-zero (see on_time).  radar_flag is the step
+  # of the cycle (1..6); each step starts the download of one frame and that frame's on_download_finished moves
+  # radar_flag on.  Frames are loaded OLDEST FIRST and the newest (radar1) last, with the animation held still
+  # meanwhile (see step 1 and 5), so the old set stays on screen until the whole new set is in.
+  - id: script_radar_download
+    then: 
+      # A download is already running - ignore this start request
+      - if:
+          condition:
+            lambda: return id(radar_busy);
+          then:
+            - script.stop: script_radar_download
+      # If we have got to 10 errors or more during download of ALL timeslots
+      # then give up and display an error message
+      - if:
+          condition:
+            lambda: return id(radar_errors) >= 10;
+          then:
+            - lambda: id(radar_dlstat) = "Error";
+            - lvgl.widget.refresh:
+                id: radar_tds
+            - lvgl.widget.hide: lbl_downloading
+            - lambda: |-
+                id(radar_flag) = 0;
+                id(radar_errors) = 0;
+                id(radar_busy) = false;
+                id(radar_updating) = false;
+      - if:
+          condition:
+            lambda: return id(radar_flag) != 0;
+          then:
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 1;
+                then:
+                  # Cycle start: snapshot the urls / timestamps, and freeze the animation on the newest frame
+                  # (radar1 is the one that gets replaced last) so the old set stays on screen, unmixed, while
+                  # the new set loads.
+                  - lambda: |-
+                      id(radar_pu1) = id(radar_url1).state;
+                      id(radar_pt1) = id(radar_ts1).state;
+                      id(radar_pu2) = id(radar_url2).state;
+                      id(radar_pt2) = id(radar_ts2).state;
+                      id(radar_pu3) = id(radar_url3).state;
+                      id(radar_pt3) = id(radar_ts3).state;
+                      id(radar_pu4) = id(radar_url4).state;
+                      id(radar_pt4) = id(radar_ts4).state;
+                      id(radar_pu5) = id(radar_url5).state;
+                      id(radar_pt5) = id(radar_ts5).state;
+                      id(radar_pu6) = id(radar_url6).state;
+                      id(radar_pt6) = id(radar_ts6).state;
+                      id(radar_updating) = true;
+                  - if:
+                      condition:
+                        lambda: return id(radar_ready);
+                      then:
+                        - lvgl.image.update:
+                            id: radar_img
+                            src: radar1
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "1/6";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lambda: id(radar_busy) = true;
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
+                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  - online_image.set_url: 
+                      id: radar6
+                      url: !lambda |-
+                        std::string u = id(radar_pu6);
+                        std::string rid;
+                        size_t a = u.find("/radar/");
+                        if (a != std::string::npos) {
+                          a += 7;
+                          size_t b = u.find('/', a);
+                          rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        }
+                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Loading radar frame 6 (1/6): %s"
+                      args: [id(radar_pu6).c_str()]
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 2;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "2/6";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lambda: id(radar_busy) = true;
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
+                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  - online_image.set_url: 
+                      id: radar5
+                      url: !lambda |-
+                        std::string u = id(radar_pu5);
+                        std::string rid;
+                        size_t a = u.find("/radar/");
+                        if (a != std::string::npos) {
+                          a += 7;
+                          size_t b = u.find('/', a);
+                          rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        }
+                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Loading radar frame 5 (2/6): %s"
+                      args: [id(radar_pu5).c_str()]
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 3;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "3/6";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lambda: id(radar_busy) = true;
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
+                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  - online_image.set_url: 
+                      id: radar4
+                      url: !lambda |-
+                        std::string u = id(radar_pu4);
+                        std::string rid;
+                        size_t a = u.find("/radar/");
+                        if (a != std::string::npos) {
+                          a += 7;
+                          size_t b = u.find('/', a);
+                          rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        }
+                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Loading radar frame 4 (3/6): %s"
+                      args: [id(radar_pu4).c_str()]
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 4;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "4/6";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lambda: id(radar_busy) = true;
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
+                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  - online_image.set_url: 
+                      id: radar3
+                      url: !lambda |-
+                        std::string u = id(radar_pu3);
+                        std::string rid;
+                        size_t a = u.find("/radar/");
+                        if (a != std::string::npos) {
+                          a += 7;
+                          size_t b = u.find('/', a);
+                          rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        }
+                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Loading radar frame 3 (4/6): %s"
+                      args: [id(radar_pu3).c_str()]
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 5;
+                then:
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "5/6";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lambda: id(radar_busy) = true;
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
+                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  - online_image.set_url: 
+                      id: radar2
+                      url: !lambda |-
+                        std::string u = id(radar_pu2);
+                        std::string rid;
+                        size_t a = u.find("/radar/");
+                        if (a != std::string::npos) {
+                          a += 7;
+                          size_t b = u.find('/', a);
+                          rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        }
+                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Loading radar frame 2 (5/6): %s"
+                      args: [id(radar_pu2).c_str()]
+                  - script.stop: script_radar_download
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 6;
+                then:
+                  # radar1 is about to be replaced - show radar2 (already the new one) while that happens
+                  - if:
+                      condition:
+                        lambda: return id(radar_ready);
+                      then:
+                        - lvgl.image.update:
+                            id: radar_img
+                            src: radar2
+                  - lvgl.widget.show: lbl_downloading
+                  - lambda: id(radar_dlstat) = "6/6";
+                  - lvgl.widget.refresh:
+                      id: radar_tds
+                  - lambda: id(radar_busy) = true;
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
+                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  - online_image.set_url: 
+                      id: radar1
+                      url: !lambda |-
+                        std::string u = id(radar_pu1);
+                        std::string rid;
+                        size_t a = u.find("/radar/");
+                        if (a != std::string::npos) {
+                          a += 7;
+                          size_t b = u.find('/', a);
+                          rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
+                        }
+                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        size_t p = u.find("/256/7/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        return u;
+                  - logger.log: 
+                      format: "Loading radar frame 1 (6/6): %s"
+                      args: [id(radar_pu1).c_str()]
+                  - script.stop: script_radar_download
+
+  # Satellite image download script            
+  - id: script_satellite_download
+    then: 
+      # similar to radar download - check if flag is set then update online_image url
+      - if:
+          condition:
+            lambda: return id(satellite_flag) != 0;
+          then:
+            - delay: 15s
+            - lvgl.widget.show: lbl_downloading
+            - online_image.set_url: 
+                id: satellite1
+                # Use the url from HA if it supplies one, otherwise the file Home Assistant keeps in
+                # /config/www (see ha_satellite_setup.yaml): latest Himawari-9 infrared image of
+                # SE Australia from NASA GIBS, 380x330 with coastlines.  The display can't read the
+                # GIBS server directly - it sends no Content-Length, which online_image needs.
+                url: !lambda |-
+                  std::string u = id(satellite_url).state;
+                  if (u.empty() || u == "unavailable" || u == "unknown")
+                    u = "http://192.168.0.100:8123/local/satellite.png";
+                  return u;
+      # Give up after 4 failures
+      - if:
+          condition:
+            lambda: return id(satellite_errors) >= 4;
+          then:
+            - lvgl.widget.hide: lbl_downloading
+            - lambda: |-
+                id(satellite_flag) = 0;
+                id(satellite_errors) = 0;
+# Radar animation: step through the frames oldest to newest, holding on the newest for two steps.
+# The label shows the time of the frame on screen.  The last two steps of the 8 step cycle are the hold.
+interval:
+  - interval: 700ms
+    then:
+      - if:
+          condition:
+            and:
+              - lambda: return id(radar_ready) && !id(radar_updating);
+              - not:
+                  lvgl.is_paused:
+          then:
+            - lambda: id(radar_frame) = (id(radar_frame) + 1) % 8;
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 0;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar6
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st6);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 1
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 1;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar5
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st5);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 2
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 2;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar4
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st4);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 3
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 3;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar3
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st3);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 4
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 4;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar2
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st2);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 5
+            - if:
+                condition:
+                  lambda: return id(radar_frame) == 5;
+                then:
+                  - lvgl.image.update:
+                      id: radar_img
+                      src: radar1
+                  - lvgl.label.update:
+                      id: radar_ts
+                      text: !lambda return id(radar_st1);
+                  - lvgl.bar.update:
+                      id: radar_progress
+                      value: 6
+# Globals including those used for display and behaviour flags
+globals:
+  # Flag/counter for downloading radar images
+  - id: radar_flag
+    type: int
+    initial_value: "0"
+  # True once a full set of radar frames has been downloaded - the animation script waits for this
+  - id: radar_ready
+    type: bool
+    initial_value: "false"
+  # Snapshot of the radar urls and timestamps taken when a download cycle starts.  The HA template shifts
+  # its frames whenever Rainviewer publishes a new one, which would otherwise make two frames in one cycle
+  # download the same image.  pu = url, pt = timestamp (this cycle), st = timestamp of the frames shown.
+  - id: radar_pu1
+    type: std::string
+  - id: radar_pt1
+    type: std::string
+  - id: radar_st1
+    type: std::string
+  - id: radar_pu2
+    type: std::string
+  - id: radar_pt2
+    type: std::string
+  - id: radar_st2
+    type: std::string
+  - id: radar_pu3
+    type: std::string
+  - id: radar_pt3
+    type: std::string
+  - id: radar_st3
+    type: std::string
+  - id: radar_pu4
+    type: std::string
+  - id: radar_pt4
+    type: std::string
+  - id: radar_st4
+    type: std::string
+  - id: radar_pu5
+    type: std::string
+  - id: radar_pt5
+    type: std::string
+  - id: radar_st5
+    type: std::string
+  - id: radar_pu6
+    type: std::string
+  - id: radar_pt6
+    type: std::string
+  - id: radar_st6
+    type: std::string
+  # A new newest radar frame arrived while an update cycle was already running - run another when it ends
+  - id: radar_again
+    type: bool
+    initial_value: "false"
+  # True from the start of a radar update cycle until its last frame has landed - the animation holds still
+  - id: radar_updating
+    type: bool
+    initial_value: "false"
+  # True while a radar frame download is in progress - stops the 12 second timer starting another one
+  # (after a long blocked request ESPHome fires the missed timer ticks back to back)
+  - id: radar_busy
+    type: bool
+    initial_value: "false"
+  # Current step of the radar animation
+  - id: radar_frame
+    type: int
+    initial_value: "0"
+  # Counter for radar download errors
+  - id: radar_errors
+    type: int
+    initial_value: "0"
+  # flag to trigger satellite image download
+  - id: satellite_flag
+    type: int
+    initial_value: "0"
+  # Counter for satellite image download errors
+  - id: satellite_errors
+    type: int
+    initial_value: "0"
+  # Status tring to indicate radar download state 
+  - id: radar_dlstat
+    type: std::string
+# Online images
+online_image: 
+
+
+  # Radar images - the six frames the download script fills (url / timestamp 1 = newest).  Frames are 384x384 with
+  # an alpha channel (3 bytes/pixel) and are scaled up 4/3 on screen, so they look like 512px frames but fit in
+  # PSRAM.  (chroma_key transparency does not work with LVGL 9 - it just draws the key colour.)
+  - url: "https://google.com/dummy.png"
+    id: radar6
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: |-
+            id(radar_flag) = 2;
+            id(radar_busy) = false;
+    on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
+      then:
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
+  - url: "https://google.com/dummy.png"
+    id: radar5
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: |-
+            id(radar_flag) = 3;
+            id(radar_busy) = false;
+    on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
+      then:
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
+  - url: "https://google.com/dummy.png"
+    id: radar4
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: |-
+            id(radar_flag) = 4;
+            id(radar_busy) = false;
+    on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
+      then:
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
+  - url: "https://google.com/dummy.png"
+    id: radar3
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: |-
+            id(radar_flag) = 5;
+            id(radar_busy) = false;
+    on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
+      then:
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
+  - url: "https://google.com/dummy.png"
+    id: radar2
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      then: 
+        - lambda: |-
+            id(radar_flag) = 6;
+            id(radar_busy) = false;
+    on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
+      then:
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
+  - url: "https://google.com/dummy.png"
+    id: radar1
+    format: png
+    type: RGB565
+    transparency: alpha_channel
+    on_download_finished:
+      # last frame (the newest) done: the whole new set is in.  Publish its timestamps, reset the cycle and
+      # restart the animation from the oldest frame.
+      then: 
+        - lambda: |-
+            id(radar_dlstat) = "-";
+            id(radar_flag) = 0;
+            id(radar_errors) = 0;
+            id(radar_ready) = true;
+            id(radar_busy) = false;
+            // HA only gives the time of each frame (e.g. "3:00 PM") - add the date from the current time.
+            // A frame time later than now (by more than 10 min) must be from before midnight.
+            auto now = id(my_time).now();
+            auto dated = [&](const std::string &t) -> std::string {
+              int h = 0, m = 0;
+              char ap[3] = {0};
+              if (!now.is_valid() || sscanf(t.c_str(), "%d:%d %2s", &h, &m, ap) != 3) return t;
+              if (h == 12) h = 0;
+              if (ap[0] == 'P' || ap[0] == 'p') h += 12;
+              time_t ts = now.timestamp;
+              if (h * 60 + m > now.hour * 60 + now.minute + 10) ts -= 86400;
+              return esphome::ESPTime::from_epoch_local(ts).strftime("%a %d %b ") + t;
+            };
+            id(radar_st1) = dated(id(radar_pt1));
+            id(radar_st2) = dated(id(radar_pt2));
+            id(radar_st3) = dated(id(radar_pt3));
+            id(radar_st4) = dated(id(radar_pt4));
+            id(radar_st5) = dated(id(radar_pt5));
+            id(radar_st6) = dated(id(radar_pt6));
+            id(radar_frame) = 7;
+            id(radar_updating) = false;
+            if (id(radar_again)) {
+              id(radar_again) = false;
+              id(radar_flag) = 1;
+            }
+        - lvgl.widget.hide: lbl_downloading
+        - lvgl.widget.refresh:
+            id: radar_tds
+    on_error: 
+      # If the download fails, increment error flag.  The radar flag is not updated thus
+      # the radar download script will attempt this image again on next run
+      then:
+        - lambda: |-
+            ++id(radar_errors);
+            id(radar_busy) = false;
+
+  # Satellite image - a PNG served by Home Assistant from /config/www (Himawari-9 infrared via NASA GIBS)
+  - url: "http://192.168.0.100:8123/local/satellite.png"
+    id: satellite1
+    format: png
+    type: RGB565
+    on_download_finished:
+      then: 
+        # update the image
+        - lvgl.image.update:
+            id: satellite
+            src: satellite1
+        # hide the downloading icon
+        - lvgl.widget.hide: lbl_downloading
+        # reset flags and counters
+        - lambda: id(satellite_flag) = 0;
+        - lambda: id(satellite_errors) = 0;
+        # update the timestamp text
+        - lvgl.widget.refresh: 
+            id: sat_ts
+    on_error: 
+      # if download error - stop script and count the error.  Retry (after the script's 15s delay) up to
+      # 4 times, then give up until the next scheduled refresh.  (The give-up check has to be here:
+      # script.stop ends the script before it could reach a check at the end of script_satellite_download.)
+      then:
+        - script.stop: script_satellite_download    
+        - lambda: ++id(satellite_errors);
+        - if:
+            condition:
+              lambda: return id(satellite_errors) < 4;
+            then:
+              - script.execute: script_satellite_download    
+            else:
+              - lvgl.widget.hide: lbl_downloading
+              - lambda: |-
+                  id(satellite_flag) = 0;
+                  id(satellite_errors) = 0;
+
+# Static images
+image: 
+  # Base map for the radar panel: 380x330 window, same scale and centre as the 512px zoom 6 radar frames
+  # (generated from Esri street map tiles with town labels and a marker for Rutherglen)
+  - file: "radar_base.png"
+    id: background_map
+    type: RGB565
+
+text_sensor:
+
+  # Radar image urls plus timestamps of each frame.  Sourced from custom HA template 
+  # that uses Rainviewer.com API (url1 / timestamp1 is the newest frame)
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp1
+    id: radar_ts1
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url1
+    id: radar_url1
+    on_value:
+      # A new newest frame.  Wait 15s so Home Assistant has downloaded it and the other attributes
+      # (timestamps, urls) have all arrived, then start a cycle - or, if one is already running, ask for
+      # another as soon as it ends (radar_again).
+      then:
+        - delay: 15s
+        - if:
+            condition:
+              lambda: return id(radar_flag) == 0 && !id(radar_busy);
+            then:
+              - lambda: id(radar_flag) = 1;
+            else:
+              - lambda: id(radar_again) = true;
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp2
+    id: radar_ts2
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url2
+    id: radar_url2
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp3
+    id: radar_ts3
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url3
+    id: radar_url3
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp4
+    id: radar_ts4
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url4
+    id: radar_url4
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp5
+    id: radar_ts5
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url5
+    id: radar_url5
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamp6
+    id: radar_ts6
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: url6
+    id: radar_url6
+
+  # satellite image url and timestamp from HA template (optional - see script_satellite_download)
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: urls
+    id: satellite_url
+  - platform: homeassistant
+    entity_id: sensor.template_weather_display_radar
+    attribute: timestamps
+    id: satellite_timestamp
+  # Time (UTC) of the newest Himawari image, from the command_line sensor in ha_satellite_setup.yaml.
+  # Shown on the satellite panel converted to local time.
+  - platform: homeassistant
+    entity_id: sensor.himawari_latest
+    id: sat_time_utc
+    on_value:
+      then:
+        - lvgl.widget.refresh:
+            id: sat_ts
+lvgl:
+  
+  # Page definitions - note that with LVGL page order in yaml is the same as compiled code
+  pages:
+    
+    # Radar and satellite
+    - id: radar_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen Radar"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+      widgets:
+        - label:
+            x: 15
+            y: 48
+            text_font: calibri_19
+            text_color: WHITE
+            text_align: LEFT
+            text: "Radar"            
+        - label:
+            x: 405
+            y: 48
+            text_font: calibri_19
+            text_color: WHITE
+            text_align: LEFT
+            text: "Satellite"            
+        # Radar: a 380x330 window (plus 1px border) onto the middle of the scaled radar frames
+        - obj:
+            id: radar_panel
+            x: 14
+            y: 71
+            width: 382
+            height: 332
+            bg_color: BLACK
+            border_width: 1
+            border_color: 0xB0B0B0
+            radius: 7
+            clip_corner: true
+            pad_all: 0
+            scrollable: false
+            widgets:
+              # static base map (same size as the window)
+              - image: 
+                  id: map1
+                  x: 0
+                  y: 0
+                  src: background_map
+              # current radar frame (384x384, scaled 4/3 about its centre), positioned so the centre of
+              # the frame sits at the centre of the 380x330 window
+              - image: 
+                  id: radar_img
+                  x: -2
+                  y: -27
+                  pivot_x: 192
+                  pivot_y: 192
+                  scale: 1.3333
+                  src: radar6
+        # progress bar under the radar - one step per frame
+        - bar:
+            id: radar_progress
+            x: 15
+            y: 404
+            width: 380
+            height: 6
+            radius: 0
+            min_value: 0
+            max_value: 6
+            value: 0
+            bg_color: 0x303030
+            indicator:
+              bg_color: 0x2F8CD8
+        # time of the frame being shown, and download status
+        - label:
+            id: radar_ts
+            x: 15
+            y: 414
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: LEFT
+            text: !lambda return id(radar_ts6).state;
+        - label:
+            id: radar_tds
+            x: 255
+            y: 414
+            width: 140
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: RIGHT
+            text: !lambda return id(radar_dlstat);
+        # Satellite: single image, same size as the radar window
+        - obj:
+            id: sat_panel
+            x: 404
+            y: 71
+            width: 382
+            height: 332
+            bg_color: BLACK
+            border_width: 1
+            border_color: 0xB0B0B0
+            radius: 7
+            clip_corner: true
+            pad_all: 0
+            scrollable: false
+            widgets:
+              - image:
+                  id: satellite
+                  x: 0
+                  y: 0
+                  src: satellite1
+        - label:
+            id: sat_ts
+            x: 405
+            y: 414
+            text_font: calibri_13
+            text_color: WHITE
+            text_align: LEFT
+            # sat_time_utc is e.g. 2026-11-14T04:00:00Z - convert to local and show date and time
+            text: !lambda |-
+              std::string s = id(sat_time_utc).state;
+              if (s.size() < 19 || s[4] != '-') return std::string("-");
+              esphome::ESPTime u{};
+              u.year = atoi(s.substr(0, 4).c_str());
+              u.month = atoi(s.substr(5, 2).c_str());
+              u.day_of_month = atoi(s.substr(8, 2).c_str());
+              u.hour = atoi(s.substr(11, 2).c_str());
+              u.minute = atoi(s.substr(14, 2).c_str());
+              u.second = atoi(s.substr(17, 2).c_str());
+              u.recalc_timestamp_utc(false);
+              auto l = esphome::ESPTime::from_epoch_local(u.timestamp);
+              int h = l.hour % 12;
+              if (h == 0) h = 12;
+              char buf[40];
+              snprintf(buf, sizeof(buf), "%s %d:%02d %s", l.strftime("%a %d %b").c_str(), h, l.minute, l.hour >= 12 ? "PM" : "AM");
+              return std::string(buf);

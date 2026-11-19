@@ -1,0 +1,333 @@
+# screentest package: core - time, theme and styles, fonts, page navigation and shared helpers
+
+# Time sourced from Home Assitant
+time:
+  - platform: homeassistant
+    id: my_time
+    on_time_sync:
+      then:
+        # Display clock on title bar
+        - lvgl.label.update:
+            id: lbl_datetime
+            text: 
+              time_format: "%H:%M - %a %d %b"
+              time: my_time 
+        # Set global storing time of first time synch - we will display this as boot time on status page
+        - lambda: |-
+            if (id(boot_time_flag))
+              { id(boot_time) = id(my_time).now();
+                id(boot_time_flag) = false;
+              }
+        - logger.log:
+            format: "Time now is: %X"
+            args: id(my_time).now()
+    on_time:
+      # Update clock on title bar, every five seconds is accurate enough.
+      - seconds: /5
+        then: 
+          - lvgl.label.update:
+              id: lbl_datetime
+              text: 
+                time_format: "%H:%M - %a %d %b"
+                time: my_time
+      # Download radar - using timer means script doesn't block (maybe)
+      # Only run script if flag is set and script not already running
+      # This will only run when the on_time: minutes: 1, 11, 21, 31, 41, 51 has run first
+      # i.e. this runs every 2 secs from the time the main script runs until the radar images are all downloaded.
+      - seconds: /2
+        then:
+          - if:
+              condition:
+                and:
+                  - lambda: return id(radar_flag) > 0;
+                  - not:
+                      script.is_running: script_radar_download
+              then:
+                - script.execute: script_radar_download
+      # Update observation labels once a minute
+      - seconds: 0
+        minutes: /1
+        then: 
+          - script.execute: script_obs
+      # Update hourly forecast data every ten minutes
+      - seconds: 0
+        minutes: 1, 11, 21, 31, 41, 51
+        then: 
+          - script.execute: script_hours
+      # Radar updates are NOT started from a clock any more: Home Assistant delivers each new frame 1-2 minutes
+      # after its time stamp, and a fixed time kept being a minute too early (so the display showed the previous
+      # set for another ten minutes).  The radar update now starts when the newest frame changes (on_value of
+      # radar_url1).  This is just a slow safety net in case that event is ever missed.
+      - seconds: 0
+        minutes: 7, 37
+        then:
+          - if:
+              condition:
+                - lambda: return id(radar_flag) == 0 && !id(radar_busy);
+              then: 
+                - lambda: id(radar_flag) = 1;
+      # Himawari-9 infrared is updated every 10 minutes but arrives with a delay, so refresh twice an hour
+      - seconds: 0
+        minutes: 3, 33
+        then:
+          - lambda: id(satellite_flag) = 1;
+          - script.execute: script_satellite_download
+      # Update daily forecast every 20 min - this is good enough to keep up with BOM updates
+      - seconds: 0
+        minutes: /20
+        then: 
+          - script.execute: script_days
+      # restart each morning at 1:00am
+      - hours: 1
+        minutes: 0
+        seconds: 0
+        then:
+          - switch.turn_on: restart_switch
+
+script:
+
+  # Page selection scripts - only here as placeholders in case any processing require on page change
+  - id: page_move_prev
+    then:
+      - lambda: 'lv_indev_wait_release(lv_indev_get_act());'
+      - lvgl.page.previous:
+
+  - id: page_move_next
+    then:
+      - lambda: 'lv_indev_wait_release(lv_indev_get_act());' 
+      - lvgl.page.next:
+
+# Radar animation: step through the frames oldest to newest, holding on the newest for two steps.
+# The label shows the time of the frame on screen.  The last two steps of the 8 step cycle are the hold.
+interval:
+  # Log free PSRAM once a minute to keep an eye on memory use
+  - interval: 60s
+    then:
+      - logger.log:
+          format: "PSRAM free %u (largest block %u), internal free %u"
+          args: ['(unsigned) heap_caps_get_free_size(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL)']
+
+# http_request block required for online_image: - note the watchdog timeout needs to longer 
+# than the timeout: value - this prevents rebouts when http_request: blocks EVERYTHING ^&%^&%%$!!
+http_request:
+  timeout: 20s
+  # 2026.x derives 3 x timeout + 1s for the request watchdog; keep ours at least that long
+  watchdog_timeout: 61s
+
+font:
+  # Forecast text
+  - file: "fonts/calibri.ttf"
+    id: calibri_13
+    size: 13
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  # Custom font file for weather screen static icons
+  - file: "fonts/Forecast.ttf"
+    id: forecast_24
+    size: 36
+    bpp: 4
+    glyphs: ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+  # Weather display detail text
+  - file: "fonts/calibri.ttf"
+    id: calibri_19
+    size: 19
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  - file: "fonts/calibri.ttf"
+    id: calibri_17
+    size: 17
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+  # weather icons from:
+  # https://github.com/erikflowers/weather-icons/blob/master/font/weathericons-regular-webfont.ttf
+  # Install font on your pc/mac and edit with Word to make these
+  # easier to understand and troubleshoot
+  - file: "fonts/weathericons-regular-webfont.ttf"
+    id: weather_24
+    size: 24
+    bpp: 4
+    glyphs: [
+      "", # clear
+      "", # cloudy
+      "", # cyclone
+      "", # dust
+      "", # fog
+      "", # frost
+      "", # haze
+      "", # heavy_shower
+      "", # heavy_shower_night
+      "", # light_rain
+      "", # light_shower
+      "", # light_shower_night
+      "", # mostly_sunny
+      "\uF086", # mostly sunny night??
+      "", # partly_cloudy      "", # partly_cloudy_night
+      "", # rain
+      "", # shower
+      "", # shower_night
+      "", # snow
+      "", # storm
+      "", # sunny
+      "", # tropical_cyclone
+      "\uF02A",
+      "\uF019",
+      "\uF071",
+      "\uF095",
+      "\uF09A",
+      "\uF09D",
+      "\uF0A0",
+      "\uF0A3",
+      "\uF0A6",
+      "\uF0AA",
+      "\uF07D",
+      "" # wind
+      ]
+  - file: "fonts/weathericons-regular-webfont.ttf"
+    id: weather_36
+    size: 36
+    bpp: 4
+    glyphs: [
+      "", # clear
+      "", # cloudy
+      "", # cyclone
+      "", # dust
+      "", # fog
+      "", # frost
+      "", # haze
+      "", # heavy_shower
+      "", # heavy_shower_night
+      "", # light_rain
+      "", # light_shower
+      "", # light_shower_night
+      "", # mostly_sunny
+      "\uF086", # mostly sunny night??
+      "", # partly_cloudy      "", # partly_cloudy_night
+      "", # rain
+      "", # shower
+      "", # shower_night
+      "", # snow
+      "", # storm
+      "", # sunny
+      "", # tropical_cyclone
+      "\uF02A",
+      "\uF019",
+      "" # wind
+      ]
+
+  # Material Design icons from github repository
+  - file: 'https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf'
+    id: mdi_42
+    size: 42
+    bpp: 4
+    glyphs: [
+      "\U000F0335", # mdi-lightbulb
+      "\U000F0336", # mdi-lightbulb-outline
+      ]
+
+  # weather display time and temp
+  - file: "fonts/calibri.ttf"
+    id: calibri_25
+    size: 25
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+   
+  # weather display wind speed
+  - file: "fonts/calibri.ttf"
+    id: calibri_40
+    size: 40
+    bpp: 4
+    glyphs: [
+       '&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0',
+       '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+       'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+       'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f',
+       'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+       'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', '/', '–']
+    
+
+# LVGL starts here!
+lvgl:
+  # idle time only used for timeout on status pop-up.  Main screen timeout handled by
+  # presence sensor
+  on_idle:
+    - timeout: 15s
+      # if no interaction after 15 seconds, check to see if pop-up display and hide it if so
+      # update flag that lets us know it is shgowing as I see no code to detect if obj is visible or not.
+      then:
+        if:
+          condition:
+            - lambda: return id(status_hidden) == false;
+          then:
+            - lvgl.widget.hide: status
+            - lambda: id(status_hidden) = true;
+
+  # Just the one display - at 800 x 480 that is pleny for memory to handle 
+  displays:
+    - my_display
+
+  # change default checked for buttons - we will use icon state to indicate checked status
+  theme:
+    button:
+      bg_color: 0x2F8CD8
+      text_color: WHITE
+      checked: 
+        bg_color: 0x087bd8
+        text_color: YELLOW
+
+  # Style only used for header and foot and forecast text on weather page.  All other pages / etc
+  # use explicit styles or defaults
+  style_definitions:
+    - id: header_footer
+      bg_color: 0x2F8CD8
+      bg_grad_color: 0x005782
+      bg_grad_dir: VER
+      bg_opa: COVER
+      border_opa: TRANSP
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0xFFFFFF
+      width: 100%
+      height: 32
+    - id: forecast_text
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0x000000
+      text_font: calibri_13
+    - id: forecast_glyph
+      radius: 0
+      pad_all: 0
+      pad_row: 0
+      pad_column: 0
+      border_color: 0x0077b3
+      text_color: 0x000000
+      text_font: weather_24

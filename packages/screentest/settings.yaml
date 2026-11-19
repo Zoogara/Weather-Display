@@ -1,0 +1,593 @@
+# screentest package: settings - status and settings overlay, presence/wake, restart, boot info
+
+switch:
+
+  # Restart switch - used on status screen
+  - platform: restart
+    name: "Weather Screen Restart"
+    id: restart_switch
+
+  # LVGL switch used to toggle returning to home page on screen wake
+  - platform: lvgl
+    widget: home_on_wake
+    id: sw_home_on_wake
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Toggles presence sensor and touch to wake OR just touch
+  - platform: lvgl
+    widget: wake_on_presence
+    id: sw_wake_on_presence
+    restore_mode: RESTORE_DEFAULT_OFF
+
+  # Toggles timer to turn off prtesence sensor
+  - platform: lvgl
+    widget: enable_timer
+    id: sw_enable_timer
+    restore_mode: RESTORE_DEFAULT_OFF
+
+binary_sensor:
+
+  # LD2410 presence sensor - only using state pin, tuned previous on test hardware
+  - platform: gpio
+    id: presence_sensor
+    pin: GPIO06
+    name: weather Screen Presence
+    device_class: presence
+    on_state: 
+      # Turn on screen if not already on if presnce is detected
+      # otherwise turn off screen if presnce no longer detected and no interaction in last 5 seconds
+      then:
+        - if: 
+            condition: 
+              - binary_sensor.is_on: presence_sensor
+              - switch.is_on: sw_wake_on_presence
+              - lvgl.is_paused
+            then:
+              - logger.log: "LVGL resuming"
+              - lvgl.resume:
+              - lvgl.widget.redraw:
+              - if:
+                  condition:
+                    - switch.is_on: sw_home_on_wake
+                  then:
+                    - lvgl.page.show: weather_page                    
+              - switch.turn_on: backlight
+              - script.execute: script_obs
+              - script.execute: script_hours
+              - script.execute: script_days
+        - if:
+            condition:
+              - binary_sensor.is_off: presence_sensor
+              - lvgl.is_idle:
+                  timeout: 5s
+            then: 
+              - logger.log: "LVGL is idle"
+              - switch.turn_off: backlight
+              - lvgl.pause:
+                  show_snow: true
+
+datetime:
+  - platform: template
+    id: presence_end_time
+    type: TIME
+    optimistic: True
+    initial_value: "22:00"
+    restore_value: True
+    on_time:
+      then:
+        if:
+          condition:
+            - switch.is_on: sw_enable_timer
+          then:
+            - switch.turn_off: sw_wake_on_presence
+  - platform: template
+    id: presence_start_time
+    type: TIME
+    optimistic: True
+    initial_value: "08:00"
+    restore_value: True
+    on_time:
+      then:
+        if:
+          condition:
+            - switch.is_on: sw_enable_timer
+          then:
+            - switch.turn_on: sw_wake_on_presence
+
+# Globals including those used for display and behaviour flags
+globals:
+  # Time of boot (first time synch)
+  - id: boot_time
+    type: esphome::ESPTime
+  # Flag used to ensure boot_time only stored on FIRST time synch
+  - id: boot_time_flag
+    type: bool
+    initial_value: "true"
+  # Time of last successful API connection
+  - id: api_connect_time
+    type: esphome::ESPTime
+  # Flag for indication if the status pop-up window is displayed
+  - id: status_hidden
+    type: bool
+    initial_value: "true"
+  # array for presence sensor activation times, must match lvgl dropdowns
+  - id: time_array
+    type: std::vector<std::string>
+    initial_value: '{"18:00:00", "19:00:00", "20:00:00", "21:00:00", "22:00:00", "23:00:00", "00:00:00", "01:00:00", "02:00:00", "03:00:00", "04:00:00", "05:00:00", "06:00:00", "07:00:00", "08:00:00"}'
+  # storage for start and end times of presence checking
+  - id: presence_end_index
+    type: int
+    initial_value: "0"
+    restore_value: True
+  - id: presence_start_index
+    type: int
+    initial_value: "11"
+    restore_value: True
+
+# All sensors sourced from HA - Ecowitt weather station sensors
+# BOM weather forecast sensors using custom template sesnors mostly
+sensor:
+  # wifi
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic" 
+text_sensor:
+  # debug sensors
+  - platform: wifi_info
+    ip_address:
+      id: esp_ip_address
+    ssid:
+      id: esp_connected_ssid
+    mac_address:
+      id: esp_mac_address
+    dns_address:
+      id: esp_dns_address
+  - platform: version
+    name: "ESPHome Version"
+    hide_timestamp: true
+lvgl:
+
+  # Top layer holds nav bar and title bar plus hidden settings/status pop-up
+  top_layer:
+    widgets:
+      - obj:
+          # Status and settings pop-up - starts hidden 
+          id: status
+          align: CENTER
+          width: 700
+          height: 350
+          pad_all: 6
+          hidden: true
+          layout: # enable the GRID layout for the children widgets
+            type: GRID # split the rows and the columns proportionally
+            pad_row: 6
+            pad_column: 8
+            grid_columns: [FR(20), FR(30), FR(37), FR(13)]
+            grid_rows: [FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1), FR(1)] 
+          # Status information from ESPHome wifi and diagnostic / wifi sensors
+          widgets:
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text_decor: UNDERLINE
+                text: "Status"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 0
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "IP Address:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 1
+            - label: 
+                id: esp_ip
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_ip_address).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 1
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Connected SSID:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 2
+            - label: 
+                id: esp_ssid
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_connected_ssid).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 2
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Wifi signal dB:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 3
+            - label: 
+                id: esp_wifi_db
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda |-
+                        char h[20];
+                        snprintf(h, sizeof(h), "%.0f dB", id(wifi_signal_db).state);
+                        return h;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 3
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "DNS address:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 4
+            - label: 
+                id: esp_dns
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_dns_address).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 4
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "MAC Address:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 5
+            - label: 
+                id: mac
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: !lambda return id(esp_mac_address).state;
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 5
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Boot time:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 7
+            - label: 
+                id: lbl_boot_time
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: "--"
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 7
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "API connect time:"
+                pad_top: 6
+                grid_cell_column_pos: 0
+                grid_cell_row_pos: 8
+            - label: 
+                id: lbl_api_time
+                align: CENTER
+                text_align: CENTER
+                text_color: BLACK
+                text: "--"
+                pad_top: 6
+                grid_cell_column_pos: 1
+                grid_cell_row_pos: 8
+            - label:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text_decor: UNDERLINE
+                text: "Settings"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 0
+            - label:
+              # Switch defined above that toggles if weather creen shown on wake or last shown screen
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Show Home screen on wake:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 1
+            - switch:
+                id: home_on_wake
+                align: CENTER
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 1
+            - label:
+              # Switch to enable / disable wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Wake on presence:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 2
+            - switch:
+                id: wake_on_presence
+                align: RIGHT_MID
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 2
+            - label:
+              # Switch (checkbox) to enable / disable timer for wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Enable presence timer:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 3
+            - checkbox:
+                id: enable_timer
+                align: CENTER
+                pad_top: 6
+                text: ""
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 3
+            - label:
+              # Time select for wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Presence turn off time:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 4
+            - dropdown:
+                id: wake_end_time
+                align: CENTER
+                width: 80
+                # note these options must match global variable id(time_array) 
+                options:
+                  - "18:00"
+                  - "19:00"
+                  - "20:00"
+                  - "21:00"
+                  - "22:00"
+                  - "23:00"
+                  - "0:00"
+                  - "1:00"
+                  - "2:00"
+                  - "3:00"
+                  - "4:00"
+                  - "5:00"
+                  - "6:00"
+                  - "7:00"
+                  - "8:00"
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 4
+                on_value:
+                  then:
+                    # set value of datetime object that will be used to switch off presence
+                    # store in global for restoration at boot
+                    - lambda: |-
+                        auto call = id(presence_end_time).make_call();
+                        call.set_time(id(time_array)[x].c_str());
+                        call.perform();
+                        id(presence_end_index) = x;
+            - label:
+              #  Time select for wake on presence sensor.  Touch always wakes.
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Presence turn on time:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 5
+            - dropdown:
+                id: wake_start_time
+                align: CENTER
+                width: 80
+                # note these options must match global variable id(time_array) 
+                options:
+                  - "18:00"
+                  - "19:00"
+                  - "20:00"
+                  - "21:00"
+                  - "22:00"
+                  - "23:00"
+                  - "0:00"
+                  - "1:00"
+                  - "2:00"
+                  - "3:00"
+                  - "4:00"
+                  - "5:00"
+                  - "6:00"
+                  - "7:00"
+                  - "8:00"
+                pad_top: 6
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 5
+                on_value:
+                  then:
+                    # set value of datetime object that will be used to switch on presence
+                    # store in global for restoration at boot                    
+                    - lambda: |-
+                        auto call = id(presence_start_time).make_call();
+                        call.set_time(id(time_array)[x].c_str());
+                        call.perform();
+                        id(presence_start_index) = x;
+            - label:
+              # button which if clicked triggers sleep mode
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Press to sleep now:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 7
+            - button:
+                id: press_to_sleep
+                align: CENTER
+                pad_top: 6
+                height: 30
+                width: 80
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 7
+                widgets:
+                  - label:
+                      align: CENTER
+                      text: "Sleep"
+                on_click:
+                  - lvgl.widget.hide: status
+                  - lambda: id(status_hidden) = true;                  
+                  - delay: 0.5s
+                  - switch.turn_off: backlight
+                  - lvgl.pause:
+                      show_snow: true
+            - label:
+              # button that if clicked triggers restart via ESPHome restart_switch:
+                align: CENTER
+                text_align: LEFT
+                text_color: BLACK
+                text: "Press for restart:"
+                pad_top: 6
+                grid_cell_column_pos: 2
+                grid_cell_row_pos: 8
+            - button:
+                id: press_to_restart
+                align: CENTER
+                checkable: TRUE
+                pad_top: 6
+                height: 30
+                width: 80
+                grid_cell_column_pos: 3
+                grid_cell_row_pos: 8
+                widgets:
+                  - label:
+                      align: CENTER
+                      text: "Restart"
+                on_change:
+                  switch.turn_on: restart_switch
+
+      - obj:
+        # Header object - not page title is overwirtten by each page load
+          align: TOP_MID
+          styles: header_footer
+          widgets:
+            - label:
+                id: pagetitle
+                text: "Rutherglen Weather"
+                align: CENTER
+                text_align: CENTER
+                text_color: 0xFFFFFF
+                pad_all: 6
+            - label:
+              # Status icon indicating connection to HA API is established
+                text: "\uF1EB"
+                id: lbl_hastatus
+                hidden: true
+                align: top_right
+                x: 0
+                y: 0
+                text_align: right
+                text_color: 0xFFFFFF
+                pad_all: 6
+            - label:
+              # Status icon shown only when satellite and radar images are downloading
+                text: "\uF019"
+                id: lbl_downloading
+                hidden: true
+                align: top_right
+                x: -40
+                y: 1
+                width: 15
+                text_align: left
+                text_color: RED
+                pad_all: 6
+            - label:
+              # date and time 
+                id: lbl_datetime
+                align: top_left
+                x: 0
+                y: 0
+                text_align: left
+                text_color: 0xFFFFFF
+                pad_all: 6    
+                on_press:
+                  then: 
+                    # date & time label is a "hidden" button to display the status and settings pop-up
+                    - lvgl.widget.show: status
+                    # populate the diagnostics as these won't be written at startup
+                    - lvgl.widget.refresh: 
+                        - id: mac
+                        - id: esp_ip
+                        - id: esp_ssid
+                        - id: esp_wifi_db
+                        - id: esp_dns
+                    - lvgl.label.update:
+                        id: lbl_boot_time
+                        text:
+                          time_format: "%c"
+                          time: !lambda return id(boot_time);
+                    - lvgl.label.update:
+                        id: lbl_api_time
+                        text:
+                          time_format: "%c"
+                          time: !lambda return id(api_connect_time);
+                    - lambda: id(status_hidden) = false;
+                on_long_press:
+                  then:
+                    # Long press will close settings and status pop-up
+                    - lvgl.widget.hide: status
+                    - lambda: id(status_hidden) = true;
+
+      - buttonmatrix:
+        # Footer object - just navigation buttons and home button
+          align: bottom_mid
+          styles: header_footer
+          pad_all: 0
+          outline_width: 0
+          id: top_layer
+          items:
+            styles: header_footer
+          rows:
+            # not that trigger point to script rather than just doing next page action
+            # because we originally were going to do other processing
+            - buttons:
+              - id: page_prev
+                text: "\uF053"
+                on_press:
+                  then:
+                    - script.execute: page_move_prev
+              - id: page_home
+                text: "\uF015"
+                on_press:
+                  then:
+                    - lvgl.page.show: weather_page
+              - id: page_next
+                text: "\uF054"
+                on_press:
+                  then:
+                    - script.execute: page_move_next

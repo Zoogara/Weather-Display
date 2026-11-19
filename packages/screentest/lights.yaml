@@ -1,0 +1,650 @@
+# screentest package: lights - lights page
+
+text_sensor:
+    
+  # Text sensor for controlling state of icons on lights page
+  - platform: homeassistant
+    id: light1_remote_light
+    entity_id: light.office_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light1
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light1
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light2_remote_light
+    entity_id: light.hallway_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light2
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light2
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light3_remote_light
+    entity_id: light.man_cave_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light3
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light3
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light4_remote_light
+    entity_id: light.front_verandah
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light4
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light4
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light5_remote_light
+    entity_id: light.front_garden_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light5
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light5
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light6_remote_light
+    entity_id: light.side_verandah_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light6
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light6
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light7_remote_light
+    entity_id: light.loungeroom_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light7
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light7
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light8_remote_light
+    entity_id: light.sunroom
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light8
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light8
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  # - platform: homeassistant
+  #   id: light9_remote_light
+  #   entity_id: light.hallway_lights
+  #   on_value:
+  #     then:
+  #       - lvgl.widget.update:
+  #           id: light9
+  #           state:
+  #             checked: !lambda return (0 == x.compare(std::string{"on"}));
+  #             disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+  #       - lvgl.label.update:
+  #           id: icon_light9
+  #           text: !lambda |-
+  #             static char buf[10];
+  #             std::string icon;
+  #             if (0 == x.compare(std::string{"on"})) {
+  #                 icon = "\U000F0335";
+  #             } else {
+  #                 icon = "\U000F0336";
+  #             }
+  #             snprintf(buf, sizeof(buf), "%s", icon.c_str());
+  #             return buf;
+  - platform: homeassistant
+    id: light10_remote_light
+    entity_id: switch.backyard_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light10
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light10
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light11_remote_light
+    entity_id: light.bbq_light
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light11
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light11
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+  - platform: homeassistant
+    id: light12_remote_light
+    entity_id: group.garage_lights
+    on_value:
+      then:
+        - lvgl.widget.update:
+            id: light12
+            state:
+              checked: !lambda return (0 == x.compare(std::string{"on"}));
+              disabled: !lambda return ((0 == x.compare(std::string{"unavailable"})) or (0 == x.compare(std::string{"unknown"})));
+        - lvgl.label.update:
+            id: icon_light12
+            text: !lambda |-
+              static char buf[10];
+              std::string icon;
+              if (0 == x.compare(std::string{"on"})) {
+                  icon = "\U000F0335";
+              } else {
+                  icon = "\U000F0336";
+              }
+              snprintf(buf, sizeof(buf), "%s", icon.c_str());
+              return buf;
+
+lvgl:
+  
+  # Page definitions - note that with LVGL page order in yaml is the same as compiled code
+  pages:
+  
+    # Page for light control - some spare buttons
+    # yaml is mostly copied drom the LVGL Tips & Tricks page "Toggle state icon button"
+    # therfe may be a way of making this less "bulky" - for future date
+    - id: lights_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen Lights"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+
+      widgets:
+        # grid layout object for all buttons
+        - obj: 
+            align: CENTER
+            width: 800
+            height: 400
+            pad_all: 6
+            bg_opa: TRANSP
+            border_opa: TRANSP
+            press_lock: false
+            # 4 x 3 grid for buttons - makes them big enough to display both icon and label
+            layout: 
+              type: GRID 
+              pad_row: 6
+              pad_column: 8
+              grid_columns: [FR(1), FR(1), FR(1), FR(1)]
+              grid_rows: [FR(1), FR(1), FR(1)] 
+            widgets:
+              # buttons - same code for all differe only in icon (group or single) and label
+              # plus whatever the code controls
+              - button:
+                  id: light1
+                  grid_cell_column_pos: 0
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light1
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light1
+                        align_to: 
+                          id: icon_light1
+                          align: OUT_BOTTOM_MID
+                        text: "Office"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.office_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.office_lights
+              - button:
+                  id: light2
+                  grid_cell_column_pos: 0
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light2
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light2
+                        align_to: 
+                          id: icon_light2
+                          align: OUT_BOTTOM_MID
+                        text: "Hallway"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.hallway_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.hallway_lights
+              - button:
+                  id: light3
+                  grid_cell_column_pos: 0
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light3
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light3
+                        align_to: 
+                          id: icon_light3
+                          align: OUT_BOTTOM_MID
+                        text: "Man Cave"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.man_cave_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.man_cave_lights
+              - button:
+                  id: light4
+                  grid_cell_column_pos: 1
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light4
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light4
+                        align_to: 
+                          id: icon_light4
+                          align: OUT_BOTTOM_MID
+                        text: "Front Verandah"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.front_verandah
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.front_verandah
+              - button:
+                  id: light5
+                  grid_cell_column_pos: 1
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light5
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light5
+                        align_to: 
+                          id: icon_light5
+                          align: OUT_BOTTOM_MID
+                        text: "Front Garden"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.front_garden_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.front_garden_lights
+              - button:
+                  id: light6
+                  grid_cell_column_pos: 1
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light6
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light6
+                        align_to: 
+                          id: icon_light6
+                          align: OUT_BOTTOM_MID
+                        text: "Side Verandah"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.side_verandah_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.side_verandah_lights
+              - button:
+                  id: light7
+                  grid_cell_column_pos: 2
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light7
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light7
+                        align_to: 
+                          id: icon_light7
+                          align: OUT_BOTTOM_MID
+                        text: "Lounge"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.loungeroom_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.loungeroom_lights
+              - button:
+                  id: light8
+                  grid_cell_column_pos: 2
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light8
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light8
+                        align_to: 
+                          id: icon_light8
+                          align: OUT_BOTTOM_MID
+                        text: "Sunroom"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.sunroom
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.sunroom
+              - button:
+                  id: light9
+                  grid_cell_column_pos: 2
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  state: 
+                    disabled: TRUE
+                  widgets:
+                    - label:
+                        id: icon_light9
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light9
+                        align_to: 
+                          id: icon_light9
+                          align: OUT_BOTTOM_MID
+                        text: "--"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.office_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.office_lights
+              - button:
+                  id: light10
+                  grid_cell_column_pos: 3
+                  grid_cell_row_pos: 0
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label: 
+                        id: icon_light10
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light10
+                        align_to: 
+                          id: icon_light10
+                          align: OUT_BOTTOM_MID
+                        text: "Back Yard"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: homeassistant.toggle
+                        data:
+                          entity_id: switch.backyard_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: homeassistant.turn_off
+                        data:
+                          entity_id: switch.backyard_lights
+              - button:
+                  id: light11
+                  grid_cell_column_pos: 3
+                  grid_cell_row_pos: 1
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light11
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light11
+                        align_to: 
+                          id: icon_light11
+                          align: OUT_BOTTOM_MID
+                        text: "BBQ"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: light.toggle
+                        data:
+                          entity_id: light.bbq_light
+                  on_long_press:
+                    - homeassistant.action:
+                        action: light.turn_off
+                        data:
+                          entity_id: light.bbq_light
+              - button:
+                  id: light12
+                  grid_cell_column_pos: 3
+                  grid_cell_row_pos: 2
+                  grid_cell_x_align: STRETCH
+                  grid_cell_y_align: STRETCH
+                  widgets:
+                    - label:
+                        id: icon_light12
+                        align: CENTER
+                        text_font: mdi_42
+                        text: "\U000F0336"
+                    - label:
+                        id: lbl_light12
+                        align_to: 
+                          id: icon_light12
+                          align: OUT_BOTTOM_MID
+                        text: "Shed"
+                  on_short_click:
+                    - homeassistant.action:
+                        action: homeassistant.toggle
+                        data:
+                          entity_id: group.garage_lights
+                  on_long_press:
+                    - homeassistant.action:
+                        action: homeassistant.turn_off
+                        data:
+                          entity_id: group.garage_lights

@@ -1,0 +1,75 @@
+# screentest package: history - 14 day history page (Puppet image)
+
+# Globals including those used for display and behaviour flags
+globals:
+  # Array that stores last 30 wind velocity figures for wind compass
+  - id: hist_wind
+    type: float[30]
+  # Array that stores last 30 wind directions for wind compass
+  - id: hist_dir
+    type: int[30]
+# Online images
+online_image: 
+
+  # 14day temp and rain history using Apexcharts and the Puppet add-on
+  # from https://github.com/balloob/home-assistant-addons repository
+  - url: "http://192.168.0.100:10000/dashboard-cast/history?viewport=780x360&wait=8500&dark"
+    id: plot14day
+    format: png
+    type: RGB565
+    # note we simply update this every 10 mins
+    update_interval: 5min
+    # If it doesn't work - either leave empty or show previous
+    on_download_finished:
+      then: 
+        - delay: 1s
+        - lvgl.image.update:
+            id: hist14day_img
+            src: plot14day
+lvgl:
+  
+  # Page definitions - note that with LVGL page order in yaml is the same as compiled code
+  pages:
+
+    # 14 day history page
+    - id: hist_page
+      on_load:
+        then: 
+          lvgl.label.update:
+            id: pagetitle
+            text: "Rutherglen 14 Day History"
+      bg_color: 0x000000
+      on_swipe_right:
+        then:
+          - script.execute: page_move_prev
+      on_swipe_left:
+        then:
+          - script.execute: page_move_next  
+      # History image from Apexcharts via Puppeteer
+      widgets:
+        # labels for each part of image - 2 labels as there are 2 charts
+        - label:
+            align_to:
+              id: hist14day_img
+              align: OUT_TOP_LEFT
+            text: "14 Day Temperature"
+            text_font: calibri_17
+            text_color: WHITE
+            pad_all: 3
+        # note the align_to: does not really seam to work unless you specift the height and width
+        - label:
+            align_to:
+              id: hist14day_img
+              align: OUT_TOP_LEFT
+              x: 390
+            text: "14 Day Rainfall"
+            text_font: calibri_17
+            text_color: WHITE
+            text_align: LEFT
+            pad_all: 3
+        # image from Apexcharts
+        - image: 
+            id: hist14day_img
+            x: 10
+            y: 75
+            src: plot14day
