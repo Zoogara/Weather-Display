@@ -52,6 +52,7 @@ psram:
 
 web_server:
   include_internal: True
+  ota: false
 
 ch422g:
   - id: io_ex
@@ -71,17 +72,20 @@ wifi:
 
   ap:
     ssid: "Screentest Fallback Hotspot"
-    password: !secret weather_ap_password
+    password: !secret ap_password
 
 ota:
   - platform: esphome
-    password: !secret weather_ota_password
+    # encrypted OTA using the API encryption key (no separate OTA password)
+    encryption:
 
 logger:
   level: DEBUG
 
 # API connect / disconnect toggles status icon on heading bar
 api:
+  encryption:
+    key: !secret screentest__encryption_key
   on_client_connected:
     - if:
         condition:
