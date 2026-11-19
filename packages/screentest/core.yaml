@@ -99,21 +99,6 @@ script:
 
 # Radar animation: step through the frames oldest to newest, holding on the newest for two steps.
 # The label shows the time of the frame on screen.  The last two steps of the 8 step cycle are the hold.
-interval:
-  # Log free PSRAM once a minute to keep an eye on memory use
-  - interval: 60s
-    then:
-      - logger.log:
-          format: "PSRAM free %u (largest block %u), internal free %u"
-          args: ['(unsigned) heap_caps_get_free_size(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL)']
-
-# http_request block required for online_image: - note the watchdog timeout needs to longer 
-# than the timeout: value - this prevents rebouts when http_request: blocks EVERYTHING ^&%^&%%$!!
-http_request:
-  timeout: 20s
-  # 2026.x derives 3 x timeout + 1s for the request watchdog; keep ours at least that long
-  watchdog_timeout: 61s
-
 font:
   # Forecast text
   - file: "fonts/calibri.ttf"

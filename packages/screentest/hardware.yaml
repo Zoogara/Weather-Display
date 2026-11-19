@@ -98,6 +98,12 @@ api:
           - lvgl.widget.hide: lbl_hastatus
 
 switch:
+
+  # Restart switch - used on status screen
+  - platform: restart
+    name: "Weather Screen Restart"
+    id: restart_switch
+
   # Backlight on I/O extender - no PWM so on/off only
   # Note there is way to truen on dimming for this panel
   # see example in https://github.com/Zoogara/Calendar-read-only-waveshare-s3-lcd-touch-7
@@ -190,3 +196,81 @@ display:
         - 48        #g5
         - 47        #g6
         - 21        #g7\
+
+# ---- pieces that depend on the ESP32 hardware / SDK.  host.yaml replaces these with template stand-ins. ----
+
+# http_request block required for online_image: - note the watchdog timeout needs to longer 
+# than the timeout: value - this prevents rebouts when http_request: blocks EVERYTHING ^&%^&%%$!!
+http_request:
+  timeout: 20s
+  # 2026.x derives 3 x timeout + 1s for the request watchdog; keep ours at least that long
+  watchdog_timeout: 61s
+
+interval:
+  # Log free PSRAM once a minute to keep an eye on memory use
+  - interval: 60s
+    then:
+      - logger.log:
+          format: "PSRAM free %u (largest block %u), internal free %u"
+          args: ['(unsigned) heap_caps_get_free_size(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)', '(unsigned) heap_caps_get_free_size(MALLOC_CAP_INTERNAL)']
+
+binary_sensor:
+
+  # LD2410 presence sensor - only using state pin, tuned previous on test hardware
+  - platform: gpio
+    id: presence_sensor
+    pin: GPIO06
+    name: weather Screen Presence
+    device_class: presence
+    on_state: 
+      # Turn on screen if not already on if presnce is detected
+      # otherwise turn off screen if presnce no longer detected and no interaction in last 5 seconds
+      then:
+        - if: 
+            condition: 
+              - binary_sensor.is_on: presence_sensor
+              - switch.is_on: sw_wake_on_presence
+              - lvgl.is_paused
+            then:
+              - logger.log: "LVGL resuming"
+              - lvgl.resume:
+              - lvgl.widget.redraw:
+              - if:
+                  condition:
+                    - switch.is_on: sw_home_on_wake
+                  then:
+                    - lvgl.page.show: weather_page                    
+              - switch.turn_on: backlight
+              - script.execute: script_obs
+              - script.execute: script_hours
+              - script.execute: script_days
+        - if:
+            condition:
+              - binary_sensor.is_off: presence_sensor
+              - lvgl.is_idle:
+                  timeout: 5s
+            then: 
+              - logger.log: "LVGL is idle"
+              - switch.turn_off: backlight
+              - lvgl.pause:
+                  show_snow: true
+
+sensor:
+  # wifi
+  - platform: wifi_signal # Reports the WiFi signal strength/RSSI in dB
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: "diagnostic" 
+
+text_sensor:
+  # debug sensors
+  - platform: wifi_info
+    ip_address:
+      id: esp_ip_address
+    ssid:
+      id: esp_connected_ssid
+    mac_address:
+      id: esp_mac_address
+    dns_address:
+      id: esp_dns_address
