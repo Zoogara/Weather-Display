@@ -13,6 +13,63 @@ script:
           - id: sunrise
           - id: sunset
           - id: humidity
+  # Redraw the wind stick (trend lines for the last 30 readings) - called when a new reading has been stored
+  - id: script_wind_stick
+    mode: restart
+    then:
+      # clear canvas for wind sticks
+      - lvgl.canvas.fill:
+          id: wind_stick
+          color: BLACK
+      # Draw wind stick - can't use yaml loops (they crash / overflow for this many repeats), so use C++ LVGL code
+      - lambda: |-
+          lv_layer_t layer;
+          lv_canvas_init_layer(wind_stick, &layer);
+          lv_draw_line_dsc_t line_dsc;
+          lv_draw_line_dsc_init(&line_dsc);
+          line_dsc.width = 1;
+          line_dsc.color = lv_palette_lighten(LV_PALETTE_GREEN, 3);
+          line_dsc.opa = LV_OPA_COVER;
+          line_dsc.round_start = 0;
+          line_dsc.round_end = 0;
+          // loop through array to draw direction / force lines for the stored readings.  Empty slots (speed 0)
+          // are skipped - they would draw a stray dot at north, and divide by zero while maxwind is still 0.
+          if (id(maxwind) > 0) {
+            for (int ax = 0; ax < 30; ++ax)  {
+              if (id(hist_wind)[ax] <= 0) continue;
+              float a = (id(hist_dir)[ax]-90)*M_PI/180;
+              float r2 = 90-(70*id(hist_wind)[ax]/id(maxwind));
+              line_dsc.p1.x = 90 + 90*cos(a);
+              line_dsc.p1.y = 90 + 90*sin(a);
+              line_dsc.p2.x = 90 + r2*cos(a);
+              line_dsc.p2.y = 90 + r2*sin(a);
+              lv_draw_line(&layer, &line_dsc);
+            }
+          }
+          lv_canvas_finish_layer(wind_stick, &layer);
+
+# Wind history: once a second store the current wind speed and direction (if they changed and the wind is
+# not calm), work out the maximum, and redraw the wind stick.  Independent of which sensor updated last.
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          static int index = 0;
+          static int prev_index = 29;
+          float speed = atof(id(wind_speed).state.c_str());
+          int dir = atoi(id(wind_dir).state.c_str());
+          // nothing to store if calm or unchanged since the last stored reading
+          if (speed <= 0 || (id(hist_wind)[prev_index] == speed && id(hist_dir)[prev_index] == dir)) return;
+          id(hist_wind)[index] = speed;
+          id(hist_dir)[index] = dir;
+          index = (index + 1) % 30;
+          prev_index = (prev_index + 1) % 30;
+          // Trend maximum for the stored readings
+          float m = 0;
+          for (int i = 0; i < 30; ++i) if (id(hist_wind)[i] > m) m = id(hist_wind)[i];
+          id(maxwind) = m;
+          id(script_wind_stick).execute();
+
 # Sun required for sun elevation sensor used for day/night comparisons
 sun:
   latitude: ${latitude}
@@ -86,32 +143,11 @@ text_sensor:
     entity_id: sensor.wind_direction
     id: wind_dir
     on_value: 
-      # note we do these loops in ! lambda as using yaml loops for more that 10 repeats
-      # causes crashes / buffer overflows
       then:
-        # update array used for compas / wind stick
-        - lambda: |-
-            static int index=0;
-            static int prev_index=29;
-            // Convert wind direction to int, speed to float
-            id(dir) = atoi(id(wind_dir).state.c_str());
-            float speed = atof(id(wind_speed).state.c_str());
-            // Store in array
-            if ((id(hist_wind)[prev_index]!=speed || id(hist_dir)[prev_index]!=id(dir)) && speed!=0) {
-              id(hist_wind)[index] = speed;
-              id(hist_dir)[index] = id(dir);
-              index += 1;
-              prev_index += 1;
-              if (index==30) { index = 0; }
-              if (prev_index==30) { prev_index = 0; }
-            }
-            // Trend maximum for last 30
-            id(maxwind) = id(hist_wind)[0];
-            for (size_t i = 0; i < 30; ++i) {
-              if (id(hist_wind)[i] > id(maxwind)) {
-                id(maxwind) = id(hist_wind)[i];
-              }
-            }
+        # keep the direction as a number for the wind direction indicator.  The wind history and the wind stick
+        # are updated by the 1 second interval below, so they don't depend on which of the direction and
+        # speed updates arrives first.
+        - lambda: id(dir) = atoi(id(wind_dir).state.c_str());
         # calculate coordinates for wind direction indicator - this is drawn in the wind speed sensor
         - lvgl.widget.update:
             id: dir_indicator
@@ -119,33 +155,6 @@ text_sensor:
               return  90 + 50 - 6 + (89 * (cos((id(dir)-90)*M_PI/180)));
             y: !lambda |-
               return  90 + 140 - 6 + (89 * (sin((id(dir)-90)*M_PI/180)));
-        # clear canvas for wind sticks
-        - lvgl.canvas.fill:
-            id: wind_stick
-            color: BLACK
-        # Draw wind stick - again can use yaml loops becase they don't work.  Use c++ LVGL code
-        # for drawing
-        - lambda: |-
-            lv_layer_t layer;
-            lv_canvas_init_layer(wind_stick, &layer);
-            lv_draw_line_dsc_t line_dsc;
-            lv_draw_line_dsc_init(&line_dsc);
-            line_dsc.width = 1;
-            line_dsc.color = lv_palette_lighten(LV_PALETTE_GREEN, 3);
-            line_dsc.opa = LV_OPA_COVER;
-            line_dsc.round_start = 0;
-            line_dsc.round_end = 0;
-            // loop through array to draw direction / force lines for last 30 readings
-            for (int ax = 0; ax < 30; ++ax)  {
-              float a = (id(hist_dir)[ax]-90)*M_PI/180;
-              float r2 = 90-(70*id(hist_wind)[ax]/id(maxwind));
-              line_dsc.p1.x = 90 + 90*cos(a);
-              line_dsc.p1.y = 90 + 90*sin(a);
-              line_dsc.p2.x = 90 + r2*cos(a);
-              line_dsc.p2.y = 90 + r2*sin(a);
-              lv_draw_line(&layer, &line_dsc);
-            }
-            lv_canvas_finish_layer(wind_stick, &layer);
 
   # Wind speed from Ecowitt,.
   - platform: homeassistant
