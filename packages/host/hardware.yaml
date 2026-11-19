@@ -1,0 +1,109 @@
+# Host (SDL window) stand-ins for everything in packages/screentest/hardware.yaml.
+# Lets the whole display UI run on a Mac / Linux machine for layout and logic testing; Home Assistant can connect
+# to it over the native API like to the real display.  Nothing here is used on the ESP32.
+
+esphome:
+  name: screentest-host
+  on_boot:
+    then:
+      # restore values for start and end time for presence sensor wake
+      - lvgl.dropdown.update:
+          id: wake_end_time
+          selected_index: !lambda return id(presence_end_index);
+      - lvgl.dropdown.update:
+          id: wake_start_time
+          selected_index: !lambda return id(presence_start_index);
+      # start on another page for screenshots: esphome run screentest-host.yaml -s start_page radar_page
+      - delay: 5s
+      - lvgl.page.show: ${start_page}
+
+host:
+  mac_address: "02:00:00:00:00:01"
+
+logger:
+  level: DEBUG
+
+# Same as the real display: API connect / disconnect toggles the status icon on the heading bar
+api:
+  on_client_connected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - lvgl.widget.show: lbl_hastatus
+          - lambda: |-
+              id(api_connect_time) = id(my_time).now();
+  on_client_disconnected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - lvgl.widget.hide: lbl_hastatus
+
+http_request:
+  timeout: 20s
+
+display:
+  - platform: sdl
+    id: my_display
+    update_interval: never
+    auto_clear_enabled: false
+    dimensions:
+      width: 800
+      height: 480
+
+touchscreen:
+  platform: sdl
+  id: my_touchscreen
+
+switch:
+  - platform: template
+    name: "Weather Screen Restart"
+    id: restart_switch
+    optimistic: true
+    internal: true
+    turn_on_action:
+      - logger.log: "Restart requested (ignored on host)"
+  - platform: template
+    name: "Backlight"
+    id: backlight
+    optimistic: true
+    internal: true
+    restore_mode: ALWAYS_ON
+
+# No presence sensor on the host
+binary_sensor:
+  - platform: template
+    name: weather Screen Presence
+    id: presence_sensor
+    internal: true
+
+sensor:
+  - platform: template
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    internal: true
+    lambda: return -50;
+    update_interval: 60s
+
+text_sensor:
+  - platform: template
+    name: esp_ip_address
+    id: esp_ip_address
+    internal: true
+    lambda: return {"127.0.0.1"};
+  - platform: template
+    name: esp_connected_ssid
+    id: esp_connected_ssid
+    internal: true
+    lambda: return {"host"};
+  - platform: template
+    name: esp_mac_address
+    id: esp_mac_address
+    internal: true
+    lambda: return {"02:00:00:00:00:01"};
+  - platform: template
+    name: esp_dns_address
+    id: esp_dns_address
+    internal: true
+    lambda: return {"127.0.0.1"};

@@ -1,0 +1,27 @@
+# Host (SDL window) build of the weather display: the same packages as screentest.yaml, but with packages/host/hardware.yaml
+# instead of the ESP32 hardware.  For testing the layout and logic on a Mac / Linux machine; Home Assistant connects to it
+# over the native API like to the real display.  Needs SDL2 (brew install sdl2).
+#   esphome compile screentest-host.yaml   (ESPHome 2026.10.2 also needs a one line fix in the generated logger_host.cpp:
+#   change  time(&rawtime)  to  ::time(&rawtime)  before building)
+# Keep the substitutions in step with screentest.yaml.
+
+substitutions:
+  # Things to change for your own set up
+  town: Rutherglen                  # shown in page titles
+  latitude: "-36.051961"            # used by the sun component (sunrise / sunset, day / night icons)
+  longitude: "146.458654"
+  ha_url: http://192.168.0.100:8123     # Home Assistant: serves the radar frames and satellite image from /config/www
+  puppet_url: http://192.168.0.100:10000  # Puppet add-on that renders the temperature plot and history images
+  bom_prefix: rutherglen            # entity names of your BOM integration, e.g. sensor.rutherglen_humidity
+  start_page: weather_page          # page shown on start up (weather_page, radar_page, hist_page, lights_page)
+
+packages:
+  hardware: !include packages/host/hardware.yaml
+  core: !include packages/screentest/core.yaml
+  weather: !include packages/screentest/weather.yaml
+  hourly: !include packages/screentest/hourly.yaml
+  forecast: !include packages/screentest/forecast.yaml
+  radar: !include packages/screentest/radar.yaml
+  history: !include packages/screentest/history.yaml
+  lights: !include packages/screentest/lights.yaml
+  settings: !include packages/screentest/settings.yaml
