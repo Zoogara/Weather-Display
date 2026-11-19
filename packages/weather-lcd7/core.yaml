@@ -150,28 +150,28 @@ font:
     size: 24
     bpp: 4
     glyphs: [
-      "", # clear
-      "", # cloudy
-      "", # cyclone
-      "", # dust
-      "", # fog
-      "", # frost
-      "", # haze
-      "", # heavy_shower
-      "", # heavy_shower_night
-      "", # light_rain
-      "", # light_shower
-      "", # light_shower_night
-      "", # mostly_sunny
+      "\U0000F02E", # clear
+      "\U0000F013", # cloudy
+      "\U0000F0C1", # cyclone
+      "\U0000F082", # dust
+      "\U0000F014", # fog
+      "\U0000F076", # frost
+      "\U0000F021", # haze
+      "\U0000F008", # heavy_shower
+      "\U0000F028", # heavy_shower_night
+      "\U0000F01A", # light_rain
+      "\U0000F009", # light_shower
+      "\U0000F029", # light_shower_night
+      "\U0000F00C", # mostly_sunny
       "\uF086", # mostly sunny night??
-      "", # partly_cloudy      "", # partly_cloudy_night
-      "", # rain
-      "", # shower
-      "", # shower_night
-      "", # snow
-      "", # storm
-      "", # sunny
-      "", # tropical_cyclone
+      "\U0000F002", # partly_cloudy
+      "\U0000F015", # rain
+      "\U0000F006", # shower
+      "\U0000F026", # shower_night
+      "\U0000F01B", # snow
+      "\U0000F01E", # storm
+      "\U0000F00D", # sunny
+      "\U0000F0C2", # tropical_cyclone
       "\uF02A",
       "\uF019",
       "\uF071",
@@ -183,38 +183,38 @@ font:
       "\uF0A6",
       "\uF0AA",
       "\uF07D",
-      "" # wind
+      "\U0000F050" # wind
       ]
   - file: "fonts/weathericons-regular-webfont.ttf"
     id: weather_36
     size: 36
     bpp: 4
     glyphs: [
-      "", # clear
-      "", # cloudy
-      "", # cyclone
-      "", # dust
-      "", # fog
-      "", # frost
-      "", # haze
-      "", # heavy_shower
-      "", # heavy_shower_night
-      "", # light_rain
-      "", # light_shower
-      "", # light_shower_night
-      "", # mostly_sunny
+      "\U0000F02E", # clear
+      "\U0000F013", # cloudy
+      "\U0000F0C1", # cyclone
+      "\U0000F082", # dust
+      "\U0000F014", # fog
+      "\U0000F076", # frost
+      "\U0000F021", # haze
+      "\U0000F008", # heavy_shower
+      "\U0000F028", # heavy_shower_night
+      "\U0000F01A", # light_rain
+      "\U0000F009", # light_shower
+      "\U0000F029", # light_shower_night
+      "\U0000F00C", # mostly_sunny
       "\uF086", # mostly sunny night??
-      "", # partly_cloudy      "", # partly_cloudy_night
-      "", # rain
-      "", # shower
-      "", # shower_night
-      "", # snow
-      "", # storm
-      "", # sunny
-      "", # tropical_cyclone
+      "\U0000F002", # partly_cloudy
+      "\U0000F015", # rain
+      "\U0000F006", # shower
+      "\U0000F026", # shower_night
+      "\U0000F01B", # snow
+      "\U0000F01E", # storm
+      "\U0000F00D", # sunny
+      "\U0000F0C2", # tropical_cyclone
       "\uF02A",
       "\uF019",
-      "" # wind
+      "\U0000F050" # wind
       ]
 
   # Material Design icons from github repository
