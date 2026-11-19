@@ -80,7 +80,7 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
                         size_t p = u.find("/256/7/");
                         if (p != std::string::npos) u.replace(p, 7, "/384/6/");
                         return u;
@@ -111,7 +111,7 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
                         size_t p = u.find("/256/7/");
                         if (p != std::string::npos) u.replace(p, 7, "/384/6/");
                         return u;
@@ -142,7 +142,7 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
                         size_t p = u.find("/256/7/");
                         if (p != std::string::npos) u.replace(p, 7, "/384/6/");
                         return u;
@@ -173,7 +173,7 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
                         size_t p = u.find("/256/7/");
                         if (p != std::string::npos) u.replace(p, 7, "/384/6/");
                         return u;
@@ -204,7 +204,7 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
                         size_t p = u.find("/256/7/");
                         if (p != std::string::npos) u.replace(p, 7, "/384/6/");
                         return u;
@@ -243,7 +243,7 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "http://192.168.0.100:8123/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
                         size_t p = u.find("/256/7/");
                         if (p != std::string::npos) u.replace(p, 7, "/384/6/");
                         return u;
@@ -271,7 +271,7 @@ script:
                 url: !lambda |-
                   std::string u = id(satellite_url).state;
                   if (u.empty() || u == "unavailable" || u == "unknown")
-                    u = "http://192.168.0.100:8123/local/satellite.png";
+                    u = "${ha_url}/local/satellite.png";
                   return u;
       # Give up after 4 failures
       - if:
@@ -603,7 +603,7 @@ online_image:
             id(radar_busy) = false;
 
   # Satellite image - a PNG served by Home Assistant from /config/www (Himawari-9 infrared via NASA GIBS)
-  - url: "http://192.168.0.100:8123/local/satellite.png"
+  - url: "${ha_url}/local/satellite.png"
     id: satellite1
     format: png
     type: RGB565
@@ -742,7 +742,7 @@ lvgl:
         then: 
           lvgl.label.update:
             id: pagetitle
-            text: "Rutherglen Radar"
+            text: "${town} Radar"
       bg_color: 0x000000
       on_swipe_right:
         then:

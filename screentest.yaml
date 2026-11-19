@@ -3,6 +3,15 @@
 # weree copied directly from a HA forum post - I fixed 
 # one error (flash size) but others I copied verbatim
 
+substitutions:
+  # Things to change for your own set up
+  town: Rutherglen                  # shown in page titles
+  latitude: "-36.051961"            # used by the sun component (sunrise / sunset, day / night icons)
+  longitude: "146.458654"
+  ha_url: http://192.168.0.100:8123     # Home Assistant: serves the radar frames and satellite image from /config/www
+  puppet_url: http://192.168.0.100:10000  # Puppet add-on that renders the temperature plot and history images
+  bom_prefix: rutherglen            # entity names of your BOM integration, e.g. sensor.rutherglen_humidity
+
 # The config is split into feature packages (see packages/screentest/).  Order matters for the LVGL pages
 # (weather, radar, history, lights) because page next / previous follows the order of the list.
 packages:

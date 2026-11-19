@@ -281,7 +281,7 @@ lvgl:
         then: 
           lvgl.label.update:
             id: pagetitle
-            text: "Rutherglen Lights"
+            text: "${town} Lights"
       bg_color: 0x000000
       on_swipe_right:
         then:

@@ -13,7 +13,7 @@ online_image:
 
   # 14day temp and rain history using Apexcharts and the Puppet add-on
   # from https://github.com/balloob/home-assistant-addons repository
-  - url: "http://192.168.0.100:10000/dashboard-cast/history?viewport=780x360&wait=8500&dark"
+  - url: "${puppet_url}/dashboard-cast/history?viewport=780x360&wait=8500&dark"
     id: plot14day
     format: png
     type: RGB565
@@ -37,7 +37,7 @@ lvgl:
         then: 
           lvgl.label.update:
             id: pagetitle
-            text: "Rutherglen 14 Day History"
+            text: "${town} 14 Day History"
       bg_color: 0x000000
       on_swipe_right:
         then:

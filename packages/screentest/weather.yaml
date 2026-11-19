@@ -209,8 +209,8 @@ script:
       - script.execute: script_forecast_scroll
 # Sun required for sun elevation sensor used for day/night comparisons
 sun:
-  latitude: -36.051961
-  longitude: 146.458654
+  latitude: ${latitude}
+  longitude: ${longitude}
 
 # Globals including those used for display and behaviour flags
 globals:
@@ -242,8 +242,8 @@ globals:
 online_image: 
   # Temperature plot sourced from a HA history graph using the Puppet add-on
   # from https://github.com/balloob/home-assistant-addons repository
-  # - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&dark=&wait=3000&lang=en"
-  - url: "http://192.168.0.100:10000/dashboard-cast/1?viewport=220x220&colors=ADD8E6%2C+000000%2C+ffffff%2C+FFDE21&palette_colors=ADD8E6%2C+000000%2C+ffffff%2C+FFDE21&dark=&wait=3000&lang=en"
+  # - url: "${puppet_url}/dashboard-cast/1?viewport=220x220&dark=&wait=3000&lang=en"
+  - url: "${puppet_url}/dashboard-cast/1?viewport=220x220&colors=ADD8E6%2C+000000%2C+ffffff%2C+FFDE21&palette_colors=ADD8E6%2C+000000%2C+ffffff%2C+FFDE21&dark=&wait=3000&lang=en"
     id: templot
     format: png
     type: RGB565
@@ -268,7 +268,7 @@ sensor:
   # numeric sensors from BOM
   - platform: homeassistant
     id: bomhumidity
-    entity_id: sensor.rutherglen_humidity
+    entity_id: sensor.${bom_prefix}_humidity
   - platform: homeassistant
     id: sunrise_next
     entity_id: sensor.weather_data
@@ -563,7 +563,7 @@ text_sensor:
     attribute: long_text
   - platform: homeassistant
     id: forecasttoday
-    entity_id: sensor.rutherglen_short_text_0
+    entity_id: sensor.${bom_prefix}_short_text_0
   - platform: homeassistant
     id: forecast1
     entity_id: sensor.template_weather_display_forecast1
@@ -683,7 +683,7 @@ text_sensor:
   # Feels like temp from HACs custom sensor
   - platform: homeassistant
     id: fl
-    entity_id: sensor.rutherglen_temp_feels_like
+    entity_id: sensor.${bom_prefix}_temp_feels_like
 
   # Timestamps for hourly forecast
   - platform: homeassistant
@@ -778,7 +778,7 @@ lvgl:
         then: 
           lvgl.label.update:
             id: pagetitle
-            text: "Rutherglen Weather"
+            text: "${town} Weather"
       bg_color: 0x000000
       # Swipe triggers for page navigation - duplicates same as buttons
       on_swipe_right:

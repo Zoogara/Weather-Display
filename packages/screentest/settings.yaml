@@ -498,7 +498,7 @@ lvgl:
           widgets:
             - label:
                 id: pagetitle
-                text: "Rutherglen Weather"
+                text: "${town} Weather"
                 align: CENTER
                 text_align: CENTER
                 text_color: 0xFFFFFF
