@@ -1,0 +1,332 @@
+# screentest package: hourly - hourly forecast: 24 temperature sensors, icons, times and the script that fills the strip
+
+script:
+
+  # update hourly forecast fields, every 10 minutes and on wake
+  - id: script_hours
+    then: 
+      - lvgl.widget.refresh:
+          - id: hour0_time
+          - id: hour0_icon
+          - id: hour0_temp
+          - id: hour1_time
+          - id: hour1_icon
+          - id: hour1_temp
+          - id: hour2_time
+          - id: hour2_icon
+          - id: hour2_temp
+          - id: hour3_time
+          - id: hour3_icon
+          - id: hour3_temp
+          - id: hour4_time
+          - id: hour4_icon
+          - id: hour4_temp
+          - id: hour5_time
+          - id: hour5_icon
+          - id: hour5_temp
+          - id: hour6_time
+          - id: hour6_icon
+          - id: hour6_temp
+          - id: hour7_time
+          - id: hour7_icon
+          - id: hour7_temp
+          - id: hour8_time
+          - id: hour8_icon
+          - id: hour8_temp
+          - id: hour9_time
+          - id: hour9_icon
+          - id: hour9_temp
+          - id: hour10_time
+          - id: hour10_icon
+          - id: hour10_temp
+          - id: hour11_time
+          - id: hour11_icon
+          - id: hour11_temp
+          - id: hour12_time
+          - id: hour12_icon
+          - id: hour12_temp
+          - id: hour13_time
+          - id: hour13_icon
+          - id: hour13_temp
+          - id: hour14_time
+          - id: hour14_icon
+          - id: hour14_temp
+          - id: hour15_time
+          - id: hour15_icon
+          - id: hour15_temp
+          - id: hour16_time
+          - id: hour16_icon
+          - id: hour16_temp
+          - id: hour17_time
+          - id: hour17_icon
+          - id: hour17_temp
+          - id: hour18_time
+          - id: hour18_icon
+          - id: hour18_temp
+          - id: hour19_time
+          - id: hour19_icon
+          - id: hour19_temp
+          - id: hour20_time
+          - id: hour20_icon
+          - id: hour20_temp
+          - id: hour21_time
+          - id: hour21_icon
+          - id: hour21_temp
+          - id: hour22_time
+          - id: hour22_icon
+          - id: hour22_temp
+          - id: hour23_time
+          - id: hour23_icon
+          - id: hour23_temp
+# All sensors sourced from HA - Ecowitt weather station sensors
+# BOM weather forecast sensors using custom template sesnors mostly
+sensor:
+
+  # hourly temp forecast from custom template sensor 
+  - platform: homeassistant
+    id: hourlytemp_0
+    entity_id: sensor.weather_data
+    attribute: temperature_0
+  - platform: homeassistant
+    id: hourlytemp_1
+    entity_id: sensor.weather_data
+    attribute: temperature_1
+  - platform: homeassistant
+    id: hourlytemp_2
+    entity_id: sensor.weather_data
+    attribute: temperature_2
+  - platform: homeassistant
+    id: hourlytemp_3
+    entity_id: sensor.weather_data
+    attribute: temperature_3
+  - platform: homeassistant
+    id: hourlytemp_4
+    entity_id: sensor.weather_data
+    attribute: temperature_4
+  - platform: homeassistant
+    id: hourlytemp_5
+    entity_id: sensor.weather_data
+    attribute: temperature_5
+  - platform: homeassistant
+    id: hourlytemp_6
+    entity_id: sensor.weather_data
+    attribute: temperature_6
+  - platform: homeassistant
+    id: hourlytemp_7
+    entity_id: sensor.weather_data
+    attribute: temperature_7
+  - platform: homeassistant
+    id: hourlytemp_8
+    entity_id: sensor.weather_data
+    attribute: temperature_8
+  - platform: homeassistant
+    id: hourlytemp_9
+    entity_id: sensor.weather_data
+    attribute: temperature_9
+  - platform: homeassistant
+    id: hourlytemp_10
+    entity_id: sensor.weather_data
+    attribute: temperature_10
+  - platform: homeassistant
+    id: hourlytemp_11
+    entity_id: sensor.weather_data
+    attribute: temperature_11
+  - platform: homeassistant
+    id: hourlytemp_12
+    entity_id: sensor.weather_data
+    attribute: temperature_12
+  - platform: homeassistant
+    id: hourlytemp_13
+    entity_id: sensor.weather_data
+    attribute: temperature_13
+  - platform: homeassistant
+    id: hourlytemp_14
+    entity_id: sensor.weather_data
+    attribute: temperature_14
+  - platform: homeassistant
+    id: hourlytemp_15
+    entity_id: sensor.weather_data
+    attribute: temperature_15
+  - platform: homeassistant
+    id: hourlytemp_16
+    entity_id: sensor.weather_data
+    attribute: temperature_16
+  - platform: homeassistant
+    id: hourlytemp_17
+    entity_id: sensor.weather_data
+    attribute: temperature_17
+  - platform: homeassistant
+    id: hourlytemp_18
+    entity_id: sensor.weather_data
+    attribute: temperature_18
+  - platform: homeassistant
+    id: hourlytemp_19
+    entity_id: sensor.weather_data
+    attribute: temperature_19
+  - platform: homeassistant
+    id: hourlytemp_20
+    entity_id: sensor.weather_data
+    attribute: temperature_20
+  - platform: homeassistant
+    id: hourlytemp_21
+    entity_id: sensor.weather_data
+    attribute: temperature_21
+  - platform: homeassistant
+    id: hourlytemp_22
+    entity_id: sensor.weather_data
+    attribute: temperature_22
+  - platform: homeassistant
+    id: hourlytemp_23
+    entity_id: sensor.weather_data
+    attribute: temperature_23
+
+
+text_sensor:
+
+  # Hourly icons from BOM via HA template sensor
+  - platform: homeassistant
+    id: hour_icon0
+    entity_id: sensor.template_weather_display_hourly_icon0
+  - platform: homeassistant
+    id: hour_icon1
+    entity_id: sensor.template_weather_display_hourly_icon1
+  - platform: homeassistant
+    id: hour_icon2
+    entity_id: sensor.template_weather_display_hourly_icon2
+  - platform: homeassistant
+    id: hour_icon3
+    entity_id: sensor.template_weather_display_hourly_icon3
+  - platform: homeassistant
+    id: hour_icon4
+    entity_id: sensor.template_weather_display_hourly_icon4
+  - platform: homeassistant
+    id: hour_icon5
+    entity_id: sensor.template_weather_display_hourly_icon5
+  - platform: homeassistant
+    id: hour_icon6
+    entity_id: sensor.template_weather_display_hourly_icon6
+  - platform: homeassistant
+    id: hour_icon7
+    entity_id: sensor.template_weather_display_hourly_icon7
+  - platform: homeassistant
+    id: hour_icon8
+    entity_id: sensor.template_weather_display_hourly_icon8
+  - platform: homeassistant
+    id: hour_icon9
+    entity_id: sensor.template_weather_display_hourly_icon9
+  - platform: homeassistant
+    id: hour_icon10
+    entity_id: sensor.template_weather_display_hourly_icon10
+  - platform: homeassistant
+    id: hour_icon11
+    entity_id: sensor.template_weather_display_hourly_icon11
+  - platform: homeassistant
+    id: hour_icon12
+    entity_id: sensor.template_weather_display_hourly_icon12
+  - platform: homeassistant
+    id: hour_icon13
+    entity_id: sensor.template_weather_display_hourly_icon13
+  - platform: homeassistant
+    id: hour_icon14
+    entity_id: sensor.template_weather_display_hourly_icon14
+  - platform: homeassistant
+    id: hour_icon15
+    entity_id: sensor.template_weather_display_hourly_icon15
+  - platform: homeassistant
+    id: hour_icon16
+    entity_id: sensor.template_weather_display_hourly_icon16
+  - platform: homeassistant
+    id: hour_icon17
+    entity_id: sensor.template_weather_display_hourly_icon17
+  - platform: homeassistant
+    id: hour_icon18
+    entity_id: sensor.template_weather_display_hourly_icon18
+  - platform: homeassistant
+    id: hour_icon19
+    entity_id: sensor.template_weather_display_hourly_icon19
+  - platform: homeassistant
+    id: hour_icon20
+    entity_id: sensor.template_weather_display_hourly_icon20
+  - platform: homeassistant
+    id: hour_icon21
+    entity_id: sensor.template_weather_display_hourly_icon21
+  - platform: homeassistant
+    id: hour_icon22
+    entity_id: sensor.template_weather_display_hourly_icon22
+  - platform: homeassistant
+    id: hour_icon23
+    entity_id: sensor.template_weather_display_hourly_icon23
+
+  # Timestamps for hourly forecast
+  - platform: homeassistant
+    id: datetime_0
+    entity_id: sensor.template_weather_display_hourly_time0
+  - platform: homeassistant
+    id: datetime_1
+    entity_id: sensor.template_weather_display_hourly_time1
+  - platform: homeassistant
+    id: datetime_2
+    entity_id: sensor.template_weather_display_hourly_time2
+  - platform: homeassistant
+    id: datetime_3
+    entity_id: sensor.template_weather_display_hourly_time3
+  - platform: homeassistant
+    id: datetime_4
+    entity_id: sensor.template_weather_display_hourly_time4
+  - platform: homeassistant
+    id: datetime_5
+    entity_id: sensor.template_weather_display_hourly_time5
+  - platform: homeassistant
+    id: datetime_6
+    entity_id: sensor.template_weather_display_hourly_time6
+  - platform: homeassistant
+    id: datetime_7
+    entity_id: sensor.template_weather_display_hourly_time7
+  - platform: homeassistant
+    id: datetime_8
+    entity_id: sensor.template_weather_display_hourly_time8
+  - platform: homeassistant
+    id: datetime_9
+    entity_id: sensor.template_weather_display_hourly_time9
+  - platform: homeassistant
+    id: datetime_10
+    entity_id: sensor.template_weather_display_hourly_time10
+  - platform: homeassistant
+    id: datetime_11
+    entity_id: sensor.template_weather_display_hourly_time11
+  - platform: homeassistant
+    id: datetime_12
+    entity_id: sensor.template_weather_display_hourly_time12
+  - platform: homeassistant
+    id: datetime_13
+    entity_id: sensor.template_weather_display_hourly_time13
+  - platform: homeassistant
+    id: datetime_14
+    entity_id: sensor.template_weather_display_hourly_time14
+  - platform: homeassistant
+    id: datetime_15
+    entity_id: sensor.template_weather_display_hourly_time15
+  - platform: homeassistant
+    id: datetime_16
+    entity_id: sensor.template_weather_display_hourly_time16
+  - platform: homeassistant
+    id: datetime_17
+    entity_id: sensor.template_weather_display_hourly_time17
+  - platform: homeassistant
+    id: datetime_18
+    entity_id: sensor.template_weather_display_hourly_time18
+  - platform: homeassistant
+    id: datetime_19
+    entity_id: sensor.template_weather_display_hourly_time19
+  - platform: homeassistant
+    id: datetime_20
+    entity_id: sensor.template_weather_display_hourly_time20
+  - platform: homeassistant
+    id: datetime_21
+    entity_id: sensor.template_weather_display_hourly_time21
+  - platform: homeassistant
+    id: datetime_22
+    entity_id: sensor.template_weather_display_hourly_time22
+  - platform: homeassistant
+    id: datetime_23
+    entity_id: sensor.template_weather_display_hourly_time23

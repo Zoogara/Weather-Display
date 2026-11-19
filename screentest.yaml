@@ -18,6 +18,8 @@ packages:
   hardware: !include packages/screentest/hardware.yaml
   core: !include packages/screentest/core.yaml
   weather: !include packages/screentest/weather.yaml
+  hourly: !include packages/screentest/hourly.yaml
+  forecast: !include packages/screentest/forecast.yaml
   radar: !include packages/screentest/radar.yaml
   history: !include packages/screentest/history.yaml
   lights: !include packages/screentest/lights.yaml

@@ -3,7 +3,7 @@
 ESPHome weather display for the Waveshare ESP32-S3-Touch-LCD-7 (16 MB flash), with Home Assistant supplying the data and images.
 Tested on ESPHome 2026.10.2.
 
-- `screentest.yaml` - the display config; it just lists the feature packages in `packages/screentest/` (hardware, core, weather, radar, history, lights, settings). Keep that folder next to it. Needs `wifi_ssid`, `wifi_password`, `weather_ap_password` and `weather_ota_password` in `secrets.yaml`. Set your own latitude/longitude and Home Assistant address (`192.168.0.100:8123`).
+- `screentest.yaml` - the display config; it just lists the feature packages in `packages/screentest/` (hardware, core, weather, hourly, forecast, radar, history, lights, settings). Keep that folder next to it. Needs `wifi_ssid`, `wifi_password`, `weather_ap_password` and `weather_ota_password` in `secrets.yaml`. Set your own latitude/longitude and Home Assistant address (`192.168.0.100:8123`).
 - `radar_base.png` - radar base map (map tiles plus town labels) drawn under the radar frames.
 - `fonts/` - fonts used by the display.
 - `homeassistant/` - the Home Assistant side:

@@ -1,0 +1,191 @@
+# screentest package: forecast - daily forecast and the double-tap forecast panel: text and icon sensors, scripts for refresh, toggle and scroll
+
+script:
+
+  # Update daily forecast fields - every 20 minutes and on wake
+  - id: script_days
+    then: 
+      - lvgl.widget.refresh:
+          - id: moon_phase_icon
+          - id: moonrise
+          - id: forecast_text_0
+          - id: forecast_icon_0
+          - id: forecast_text_1
+          - id: forecast_icon_1
+          - id: forecast_text_2
+          - id: forecast_icon_2
+          - id: forecast_text_3
+          - id: forecast_icon_3
+          - id: forecast_text_4
+          - id: forecast_icon_4
+          - id: forecast_text_5
+          - id: forecast_icon_5
+          - id: forecast_text_6
+          - id: forecast_icon_6
+      - script.execute: script_forecast_scroll
+
+  # Slow vertical scroll for the forecast text boxes.  For each box, if its label is taller than the box,
+  # slide the label up over ~70 ms per pixel, pause, slide back, pause, and repeat.  Restarted whenever the
+  # text or the box size changes (daily refresh, mode toggle); a box whose text fits just sits still.
+  - id: script_forecast_scroll
+    then:
+      - lambda: |-
+          auto restart = [](lv_obj_t *label, lv_obj_t *box) {
+            lv_anim_delete(label, (lv_anim_exec_xcb_t) lv_obj_set_y);
+            lv_obj_set_y(label, 0);
+            lv_obj_update_layout(box);
+            int over = lv_obj_get_height(label) - lv_obj_get_height(box);
+            if (over <= 0) return;
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, label);
+            lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t) lv_obj_set_y);
+            lv_anim_set_values(&a, 0, -over);
+            lv_anim_set_duration(&a, over * 70);
+            lv_anim_set_reverse_duration(&a, over * 70);
+            lv_anim_set_delay(&a, 6000);
+            lv_anim_set_reverse_delay(&a, 4000);
+            lv_anim_set_repeat_delay(&a, 6000);
+            lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+            lv_anim_start(&a);
+          };
+          restart(forecast_text_0, forecast_box_0);
+          restart(forecast_text_1, forecast_box_1);
+          restart(forecast_text_2, forecast_box_2);
+
+  # Right hand forecast panel - double tap toggles between the 7 day forecast (mode 0) and a 3 block view
+  # (mode 1): long text for today, tomorrow and the day after.  The 3 blocks use the separators at y=176 and
+  # y=311 and are 125 / 120 / 120 px tall; text longer than its box scrolls (script_forecast_scroll).
+  - id: script_forecast_toggle
+    then:
+      - lambda: |-
+          id(forecast_mode) = (id(forecast_mode) == 0) ? 1 : 0;
+      - if:
+          condition:
+            lambda: return id(forecast_mode) == 1;
+          then:
+            - lvgl.widget.update:
+                id: forecast_box_0
+                height: 125
+            - lvgl.widget.update:
+                id: forecast_box_1
+                height: 120
+            - lvgl.widget.update:
+                id: forecast_icon_2
+                y: 316
+            - lvgl.widget.update:
+                id: forecast_box_2
+                y: 320
+                height: 120
+            - lvgl.widget.hide: forecast_text_3
+            - lvgl.widget.hide: forecast_text_4
+            - lvgl.widget.hide: forecast_text_5
+            - lvgl.widget.hide: forecast_text_6
+            - lvgl.widget.hide: forecast_icon_3
+            - lvgl.widget.hide: forecast_icon_4
+            - lvgl.widget.hide: forecast_icon_5
+            - lvgl.widget.hide: forecast_icon_6
+            - lvgl.widget.hide: fc_line_2
+            - lvgl.widget.hide: fc_line_3
+            - lvgl.widget.hide: fc_line_5
+            - lvgl.widget.hide: fc_line_6
+          else:
+            - lvgl.widget.update:
+                id: forecast_box_0
+                height: 120
+            - lvgl.widget.update:
+                id: forecast_box_1
+                height: 40
+            - lvgl.widget.update:
+                id: forecast_icon_2
+                y: 226
+            - lvgl.widget.update:
+                id: forecast_box_2
+                y: 230
+                height: 40
+            - lvgl.widget.show: forecast_text_3
+            - lvgl.widget.show: forecast_text_4
+            - lvgl.widget.show: forecast_text_5
+            - lvgl.widget.show: forecast_text_6
+            - lvgl.widget.show: forecast_icon_3
+            - lvgl.widget.show: forecast_icon_4
+            - lvgl.widget.show: forecast_icon_5
+            - lvgl.widget.show: forecast_icon_6
+            - lvgl.widget.show: fc_line_2
+            - lvgl.widget.show: fc_line_3
+            - lvgl.widget.show: fc_line_5
+            - lvgl.widget.show: fc_line_6
+      - lvgl.widget.refresh: forecast_text_1
+      - lvgl.widget.refresh: forecast_text_2
+      - script.execute: script_forecast_scroll
+# Globals including those used for display and behaviour flags
+globals:
+  # Right hand forecast panel: 0 = 7 day forecast, 1 = long text for today and tomorrow (double tap toggles)
+  - id: forecast_mode
+    type: int
+    initial_value: "0"
+  # Time (millis) of the last tap on the forecast panel, and whether the latest tap completed a double tap
+  - id: forecast_last_tap
+    type: uint32_t
+    initial_value: "0"
+  - id: forecast_double_tap
+    type: bool
+    initial_value: "false"
+text_sensor:
+
+  # Daily forecast text from BOM via HA template sensor
+  - platform: homeassistant
+    id: forecast0
+    entity_id: sensor.template_weather_display_forecast0
+    attribute: long_text
+  # Long text for tomorrow and the day after, from the HA template sensors (attribute long_text) which
+  # build "<day>: min/max - <full BOM extended text>" - the same as forecast0 does for today.
+  - platform: homeassistant
+    id: forecast1_long
+    entity_id: sensor.template_weather_display_forecast1
+    attribute: long_text
+  - platform: homeassistant
+    id: forecast2_long
+    entity_id: sensor.template_weather_display_forecast2
+    attribute: long_text
+  - platform: homeassistant
+    id: forecast1
+    entity_id: sensor.template_weather_display_forecast1
+  - platform: homeassistant
+    id: forecast2
+    entity_id: sensor.template_weather_display_forecast2
+  - platform: homeassistant
+    id: forecast3
+    entity_id: sensor.template_weather_display_forecast3
+  - platform: homeassistant
+    id: forecast4
+    entity_id: sensor.template_weather_display_forecast4
+  - platform: homeassistant
+    id: forecast5
+    entity_id: sensor.template_weather_display_forecast5
+  - platform: homeassistant
+    id: forecast6
+    entity_id: sensor.template_weather_display_forecast6
+              
+  # Daily forecast icon from BOM via HA template sesnor
+  - platform: homeassistant
+    id: icon0
+    entity_id: sensor.template_weather_display_icon0
+  - platform: homeassistant
+    id: icon1
+    entity_id: sensor.template_weather_display_icon1
+  - platform: homeassistant
+    id: icon2
+    entity_id: sensor.template_weather_display_icon2
+  - platform: homeassistant
+    id: icon3
+    entity_id: sensor.template_weather_display_icon3
+  - platform: homeassistant
+    id: icon4
+    entity_id: sensor.template_weather_display_icon4
+  - platform: homeassistant
+    id: icon5
+    entity_id: sensor.template_weather_display_icon5
+  - platform: homeassistant
+    id: icon6
+    entity_id: sensor.template_weather_display_icon6

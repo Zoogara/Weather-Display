@@ -1,0 +1,765 @@
+# Hourly forecast strip for the weather page: one container holding the 24 hours (time, icon, temperature).
+# Included from weather.yaml as a single widget, so it keeps its position (z-order) in the page.
+# Hourly forecast
+# Forcast data for 24 hours, in scrolling grid
+obj:
+    id: hourly_forecast
+    x: 15
+    y: 357
+    width: 440
+    height: 98
+# LVGL 9.5 shows a vertical scrollbar here; the strip only needs to scroll sideways
+    scroll_dir: HOR
+    bg_color: BLACK
+    border_width: 0
+    layout:
+      pad_column: 0
+      pad_row: 0
+      type: GRID
+      grid_rows: [14, 37, 13]
+      grid_columns: [45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45, 45] 
+# Time, condition icon and temp sourced from BOM via template sensor
+    widgets: 
+      - label: 
+          id: hour0_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 0
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_0).state;
+          text_font: calibri_13
+      - label: 
+          id: hour0_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 0
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon0).state;
+          text_font: weather_24
+      - label: 
+          id: hour0_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 0
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_0).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour1_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 1
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_1).state;
+          text_font: calibri_13
+      - label: 
+          id: hour1_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 1
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon1).state;
+          text_font: weather_24
+      - label: 
+          id: hour1_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 1
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_1).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour2_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 2
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_2).state;
+          text_font: calibri_13
+      - label: 
+          id: hour2_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 2
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon2).state;
+          text_font: weather_24
+      - label: 
+          id: hour2_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 2
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_2).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour3_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 3
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_3).state;
+          text_font: calibri_13
+      - label: 
+          id: hour3_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 3
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon3).state;
+          text_font: weather_24
+      - label: 
+          id: hour3_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 3
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_3).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour4_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 4
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_4).state;
+          text_font: calibri_13
+      - label: 
+          id: hour4_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 4
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon4).state;
+          text_font: weather_24
+      - label: 
+          id: hour4_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 4
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_4).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour5_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 5
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_5).state;
+          text_font: calibri_13
+      - label: 
+          id: hour5_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 5
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon5).state;
+          text_font: weather_24
+      - label: 
+          id: hour5_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 5
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_5).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour6_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 6
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_6).state;
+          text_font: calibri_13
+      - label: 
+          id: hour6_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 6
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon6).state;
+          text_font: weather_24
+      - label: 
+          id: hour6_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 6
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_6).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour7_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 7
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_7).state;
+          text_font: calibri_13
+      - label: 
+          id: hour7_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 7
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon7).state;
+          text_font: weather_24
+      - label: 
+          id: hour7_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 7
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_7).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour8_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 8
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_8).state;
+          text_font: calibri_13
+      - label: 
+          id: hour8_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 8
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon8).state;
+          text_font: weather_24
+      - label: 
+          id: hour8_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 8
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_8).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour9_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 9
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_9).state;
+          text_font: calibri_13
+      - label: 
+          id: hour9_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 9
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon9).state;
+          text_font: weather_24
+      - label: 
+          id: hour9_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 9
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_9).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour10_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 10
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_10).state;
+          text_font: calibri_13
+      - label: 
+          id: hour10_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 10
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon10).state;
+          text_font: weather_24
+      - label: 
+          id: hour10_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 10
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_10).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour11_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 11
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_11).state;
+          text_font: calibri_13
+      - label: 
+          id: hour11_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 11
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon11).state;
+          text_font: weather_24
+      - label: 
+          id: hour11_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 11
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_11).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour12_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 12
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_12).state;
+          text_font: calibri_13
+      - label: 
+          id: hour12_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 12
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon12).state;
+          text_font: weather_24
+      - label: 
+          id: hour12_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 12
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_12).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour13_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 13
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_13).state;
+          text_font: calibri_13
+      - label: 
+          id: hour13_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 13
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon13).state;
+          text_font: weather_24
+      - label: 
+          id: hour13_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 13
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_13).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour14_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 14
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_14).state;
+          text_font: calibri_13
+      - label: 
+          id: hour14_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 14
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon14).state;
+          text_font: weather_24
+      - label: 
+          id: hour14_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 14
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_14).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour15_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 15
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_15).state;
+          text_font: calibri_13
+      - label: 
+          id: hour15_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 15
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon15).state;
+          text_font: weather_24
+      - label: 
+          id: hour15_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 15
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_15).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour16_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 16
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_16).state;
+          text_font: calibri_13
+      - label: 
+          id: hour16_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 16
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon16).state;
+          text_font: weather_24
+      - label: 
+          id: hour16_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 16
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_16).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour17_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 17
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_17).state;
+          text_font: calibri_13
+      - label: 
+          id: hour17_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 17
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon17).state;
+          text_font: weather_24
+      - label: 
+          id: hour17_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 17
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_17).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour18_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 18
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_18).state;
+          text_font: calibri_13
+      - label: 
+          id: hour18_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 18
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon18).state;
+          text_font: weather_24
+      - label: 
+          id: hour18_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 18
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_18).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour19_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 19
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_19).state;
+          text_font: calibri_13
+      - label: 
+          id: hour19_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 19
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon19).state;
+          text_font: weather_24
+      - label: 
+          id: hour19_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 19
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_19).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour20_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 20
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_20).state;
+          text_font: calibri_13
+      - label: 
+          id: hour20_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 20
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon20).state;
+          text_font: weather_24
+      - label: 
+          id: hour20_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 20
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_20).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour21_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 21
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_21).state;
+          text_font: calibri_13
+      - label: 
+          id: hour21_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 21
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon21).state;
+          text_font: weather_24
+      - label: 
+          id: hour21_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 21
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_21).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour22_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 22
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_22).state;
+          text_font: calibri_13
+      - label: 
+          id: hour22_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 22
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon22).state;
+          text_font: weather_24
+      - label: 
+          id: hour22_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 22
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_22).state);
+            return h;
+          text_font: calibri_13
+
+      - label: 
+          id: hour23_time
+          grid_cell_row_pos: 0
+          grid_cell_column_pos: 23
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(datetime_23).state;
+          text_font: calibri_13
+      - label: 
+          id: hour23_icon
+          grid_cell_row_pos: 1
+          grid_cell_column_pos: 23
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda return id(hour_icon23).state;
+          text_font: weather_24
+      - label: 
+          id: hour23_temp
+          grid_cell_row_pos: 2
+          grid_cell_column_pos: 23
+          text_color: WHITE
+          grid_cell_x_align: CENTER
+          text_align: CENTER
+          text: !lambda |-
+            char h[20];
+            snprintf(h, sizeof(h), "%.0f °C", id(hourlytemp_23).state);
+            return h;
+          text_font: calibri_13
