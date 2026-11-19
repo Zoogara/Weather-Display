@@ -1,7 +1,7 @@
-# screentest package: hardware - board, network, display and touch hardware
+# weather-lcd7 package: hardware - board, network, display and touch hardware
 
 esphome:
-  name: screentest
+  name: ${name}
   platformio_options:
     build_unflags: -Werror=all
     board_build.flash_mode: dio
@@ -71,7 +71,7 @@ wifi:
   power_save_mode: none
 
   ap:
-    ssid: "Screentest Fallback Hotspot"
+    ssid: "Weather-LCD7 Fallback Hotspot"
     password: !secret ap_password
 
 ota:
@@ -85,7 +85,7 @@ logger:
 # API connect / disconnect toggles status icon on heading bar
 api:
   encryption:
-    key: !secret screentest__encryption_key
+    key: !secret weather_lcd7__encryption_key
   on_client_connected:
     - if:
         condition:

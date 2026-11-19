@@ -1,4 +1,4 @@
-# screentest package: weather - weather page: current observations, wind rose, Puppet temperature plot, page layout
+# weather-lcd7 package: weather - weather page: current observations, wind rose, Puppet temperature plot, page layout
 
 script:
   # update all observation fields - called on wake and every minute

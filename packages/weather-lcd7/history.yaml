@@ -1,4 +1,4 @@
-# screentest package: history - 14 day history page (Puppet image)
+# weather-lcd7 package: history - 14 day history page (Puppet image)
 
 # Globals including those used for display and behaviour flags
 globals:

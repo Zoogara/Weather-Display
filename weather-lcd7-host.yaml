@@ -1,11 +1,12 @@
-# Host (SDL window) build of the weather display: the same packages as screentest.yaml, but with packages/host/hardware.yaml
+# Host (SDL window) build of the weather display: the same packages as weather-lcd7.yaml, but with packages/host/hardware.yaml
 # instead of the ESP32 hardware.  For testing the layout and logic on a Mac / Linux machine; Home Assistant connects to it
 # over the native API like to the real display.  Needs SDL2 (brew install sdl2).
-#   esphome compile screentest-host.yaml   (ESPHome 2026.10.2 also needs a one line fix in the generated logger_host.cpp:
+#   esphome compile weather-lcd7-host.yaml   (ESPHome 2026.10.2 also needs a one line fix in the generated logger_host.cpp:
 #   change  time(&rawtime)  to  ::time(&rawtime)  before building)
-# Keep the substitutions in step with screentest.yaml.
+# Keep the substitutions in step with weather-lcd7.yaml.
 
 substitutions:
+  name: weather-lcd7                # device name (hostname weather-lcd7.local); also the name of the host build with -host added
   # Things to change for your own set up
   town: Rutherglen                  # shown in page titles
   latitude: "-36.051961"            # used by the sun component (sunrise / sunset, day / night icons)
@@ -17,11 +18,11 @@ substitutions:
 
 packages:
   hardware: !include packages/host/hardware.yaml
-  core: !include packages/screentest/core.yaml
-  weather: !include packages/screentest/weather.yaml
-  hourly: !include packages/screentest/hourly.yaml
-  forecast: !include packages/screentest/forecast.yaml
-  radar: !include packages/screentest/radar.yaml
-  history: !include packages/screentest/history.yaml
-  lights: !include packages/screentest/lights.yaml
-  settings: !include packages/screentest/settings.yaml
+  core: !include packages/weather-lcd7/core.yaml
+  weather: !include packages/weather-lcd7/weather.yaml
+  hourly: !include packages/weather-lcd7/hourly.yaml
+  forecast: !include packages/weather-lcd7/forecast.yaml
+  radar: !include packages/weather-lcd7/radar.yaml
+  history: !include packages/weather-lcd7/history.yaml
+  lights: !include packages/weather-lcd7/lights.yaml
+  settings: !include packages/weather-lcd7/settings.yaml

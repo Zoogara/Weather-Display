@@ -1,9 +1,9 @@
-# Host (SDL window) stand-ins for everything in packages/screentest/hardware.yaml.
+# Host (SDL window) stand-ins for everything in packages/weather-lcd7/hardware.yaml.
 # Lets the whole display UI run on a Mac / Linux machine for layout and logic testing; Home Assistant can connect
 # to it over the native API like to the real display.  Nothing here is used on the ESP32.
 
 esphome:
-  name: screentest-host
+  name: ${name}-host
   on_boot:
     then:
       # restore values for start and end time for presence sensor wake
@@ -13,7 +13,7 @@ esphome:
       - lvgl.dropdown.update:
           id: wake_start_time
           selected_index: !lambda return id(presence_start_index);
-      # start on another page for screenshots: esphome run screentest-host.yaml -s start_page radar_page
+      # start on another page for screenshots: esphome run weather-lcd7-host.yaml -s start_page radar_page
       - delay: 5s
       - lvgl.page.show: ${start_page}
 

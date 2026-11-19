@@ -4,6 +4,7 @@
 # one error (flash size) but others I copied verbatim
 
 substitutions:
+  name: weather-lcd7                # device name (hostname weather-lcd7.local); also the name of the host build with -host added
   # Things to change for your own set up
   town: Rutherglen                  # shown in page titles
   latitude: "-36.051961"            # used by the sun component (sunrise / sunset, day / night icons)
@@ -12,15 +13,15 @@ substitutions:
   puppet_url: http://192.168.0.100:10000  # Puppet add-on that renders the temperature plot and history images
   bom_prefix: rutherglen            # entity names of your BOM integration, e.g. sensor.rutherglen_humidity
 
-# The config is split into feature packages (see packages/screentest/).  Order matters for the LVGL pages
+# The config is split into feature packages (see packages/weather-lcd7/).  Order matters for the LVGL pages
 # (weather, radar, history, lights) because page next / previous follows the order of the list.
 packages:
-  hardware: !include packages/screentest/hardware.yaml
-  core: !include packages/screentest/core.yaml
-  weather: !include packages/screentest/weather.yaml
-  hourly: !include packages/screentest/hourly.yaml
-  forecast: !include packages/screentest/forecast.yaml
-  radar: !include packages/screentest/radar.yaml
-  history: !include packages/screentest/history.yaml
-  lights: !include packages/screentest/lights.yaml
-  settings: !include packages/screentest/settings.yaml
+  hardware: !include packages/weather-lcd7/hardware.yaml
+  core: !include packages/weather-lcd7/core.yaml
+  weather: !include packages/weather-lcd7/weather.yaml
+  hourly: !include packages/weather-lcd7/hourly.yaml
+  forecast: !include packages/weather-lcd7/forecast.yaml
+  radar: !include packages/weather-lcd7/radar.yaml
+  history: !include packages/weather-lcd7/history.yaml
+  lights: !include packages/weather-lcd7/lights.yaml
+  settings: !include packages/weather-lcd7/settings.yaml
