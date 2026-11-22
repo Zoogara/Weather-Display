@@ -256,6 +256,10 @@ font:
 
 # LVGL starts here!
 lvgl:
+  # Screen going to sleep: put the radar back to 1x, so it is at 1x when the screen wakes
+  on_pause:
+    - lambda: id(radar_zoom) = 6;
+    - script.execute: script_radar_zoom_apply
   # idle time only used for timeout on status pop-up.  Main screen timeout handled by
   # presence sensor
   on_idle:

@@ -29,6 +29,8 @@ script:
                 id(radar_errors) = 0;
                 id(radar_busy) = false;
                 id(radar_updating) = false;
+                id(radar_zoom_load) = false;
+            - lvgl.widget.show: radar_img
       - if:
           condition:
             lambda: return id(radar_flag) != 0;
@@ -54,21 +56,32 @@ script:
                       id(radar_pu6) = id(radar_url6).state;
                       id(radar_pt6) = id(radar_ts6).state;
                       id(radar_updating) = true;
+                      // The zoom is fixed for the whole cycle.  If it differs from the zoom of the map on screen
+                      // this is a zoom change: the new map is shown straight away and the frames appear as they land.
+                      id(radar_cz) = id(radar_zoom);
+                      id(radar_zoom_load) = (id(radar_cz) != id(radar_mz));
+                      id(radar_mz) = id(radar_cz);
                   - if:
                       condition:
-                        lambda: return id(radar_ready);
+                        lambda: return id(radar_ready) && !id(radar_zoom_load);
                       then:
                         - lvgl.image.update:
                             id: radar_img
                             src: radar1
+                  - if:
+                      condition:
+                        lambda: return id(radar_zoom_load);
+                      then:
+                        - script.execute: script_radar_zoom_view
                   - lvgl.widget.show: lbl_downloading
                   - lambda: id(radar_dlstat) = "1/6";
                   - lvgl.widget.refresh:
                       id: radar_tds
                   - lambda: id(radar_busy) = true;
-                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (zoom 6) and <frame id>_z5.png / _z7.png
+                  # (see homeassistant/radar.yaml);
                   # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
-                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  # fall back to Rainviewer itself (384px at the cycle's zoom, shown scaled 4/3).
                   - online_image.set_url: 
                       id: radar6
                       url: !lambda |-
@@ -80,9 +93,9 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + (id(radar_cz) == 6 ? std::string() : "_z" + std::to_string(id(radar_cz))) + ".png";
                         size_t p = u.find("/256/7/");
-                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/" + std::to_string(id(radar_cz)) + "/");
                         return u;
                   - logger.log: 
                       format: "Loading radar frame 6 (1/6): %s"
@@ -97,9 +110,10 @@ script:
                   - lvgl.widget.refresh:
                       id: radar_tds
                   - lambda: id(radar_busy) = true;
-                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (zoom 6) and <frame id>_z5.png / _z7.png
+                  # (see homeassistant/radar.yaml);
                   # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
-                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  # fall back to Rainviewer itself (384px at the cycle's zoom, shown scaled 4/3).
                   - online_image.set_url: 
                       id: radar5
                       url: !lambda |-
@@ -111,9 +125,9 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + (id(radar_cz) == 6 ? std::string() : "_z" + std::to_string(id(radar_cz))) + ".png";
                         size_t p = u.find("/256/7/");
-                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/" + std::to_string(id(radar_cz)) + "/");
                         return u;
                   - logger.log: 
                       format: "Loading radar frame 5 (2/6): %s"
@@ -128,9 +142,10 @@ script:
                   - lvgl.widget.refresh:
                       id: radar_tds
                   - lambda: id(radar_busy) = true;
-                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (zoom 6) and <frame id>_z5.png / _z7.png
+                  # (see homeassistant/radar.yaml);
                   # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
-                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  # fall back to Rainviewer itself (384px at the cycle's zoom, shown scaled 4/3).
                   - online_image.set_url: 
                       id: radar4
                       url: !lambda |-
@@ -142,9 +157,9 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + (id(radar_cz) == 6 ? std::string() : "_z" + std::to_string(id(radar_cz))) + ".png";
                         size_t p = u.find("/256/7/");
-                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/" + std::to_string(id(radar_cz)) + "/");
                         return u;
                   - logger.log: 
                       format: "Loading radar frame 4 (3/6): %s"
@@ -159,9 +174,10 @@ script:
                   - lvgl.widget.refresh:
                       id: radar_tds
                   - lambda: id(radar_busy) = true;
-                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (zoom 6) and <frame id>_z5.png / _z7.png
+                  # (see homeassistant/radar.yaml);
                   # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
-                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  # fall back to Rainviewer itself (384px at the cycle's zoom, shown scaled 4/3).
                   - online_image.set_url: 
                       id: radar3
                       url: !lambda |-
@@ -173,9 +189,9 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + (id(radar_cz) == 6 ? std::string() : "_z" + std::to_string(id(radar_cz))) + ".png";
                         size_t p = u.find("/256/7/");
-                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/" + std::to_string(id(radar_cz)) + "/");
                         return u;
                   - logger.log: 
                       format: "Loading radar frame 3 (4/6): %s"
@@ -190,9 +206,10 @@ script:
                   - lvgl.widget.refresh:
                       id: radar_tds
                   - lambda: id(radar_busy) = true;
-                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (zoom 6) and <frame id>_z5.png / _z7.png
+                  # (see homeassistant/radar.yaml);
                   # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
-                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  # fall back to Rainviewer itself (384px at the cycle's zoom, shown scaled 4/3).
                   - online_image.set_url: 
                       id: radar2
                       url: !lambda |-
@@ -204,9 +221,9 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + (id(radar_cz) == 6 ? std::string() : "_z" + std::to_string(id(radar_cz))) + ".png";
                         size_t p = u.find("/256/7/");
-                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/" + std::to_string(id(radar_cz)) + "/");
                         return u;
                   - logger.log: 
                       format: "Loading radar frame 2 (5/6): %s"
@@ -229,9 +246,10 @@ script:
                   - lvgl.widget.refresh:
                       id: radar_tds
                   - lambda: id(radar_busy) = true;
-                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (see ha_radar_setup.yaml);
+                  # Home Assistant keeps each frame as /config/www/radar/<frame id>.png (zoom 6) and <frame id>_z5.png / _z7.png
+                  # (see homeassistant/radar.yaml);
                   # the id is taken from the Rainviewer url the template gives us.  After two failures in a cycle
-                  # fall back to Rainviewer itself (384px / zoom 6, shown scaled 4/3 = the old 256px / zoom 7 scale).
+                  # fall back to Rainviewer itself (384px at the cycle's zoom, shown scaled 4/3).
                   - online_image.set_url: 
                       id: radar1
                       url: !lambda |-
@@ -243,14 +261,71 @@ script:
                           size_t b = u.find('/', a);
                           rid = u.substr(a, b == std::string::npos ? std::string::npos : b - a);
                         }
-                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + ".png";
+                        if (!rid.empty() && id(radar_errors) < 2) return "${ha_url}/local/radar/" + rid + (id(radar_cz) == 6 ? std::string() : "_z" + std::to_string(id(radar_cz))) + ".png";
                         size_t p = u.find("/256/7/");
-                        if (p != std::string::npos) u.replace(p, 7, "/384/6/");
+                        if (p != std::string::npos) u.replace(p, 7, "/384/" + std::to_string(id(radar_cz)) + "/");
                         return u;
                   - logger.log: 
                       format: "Loading radar frame 1 (6/6): %s"
                       args: [id(radar_pu1).c_str()]
                   - script.stop: script_radar_download
+
+  # Zoom change, start of the download cycle: show the new base map straight away and hide the old radar image
+  # (it is at the old zoom).  Frames then appear as they land.
+  - id: script_radar_zoom_view
+    then:
+      - if:
+          condition:
+            lambda: return id(radar_cz) == 5;
+          then:
+            - lvgl.image.update:
+                id: map1
+                src: background_map5
+      - if:
+          condition:
+            lambda: return id(radar_cz) == 6;
+          then:
+            - lvgl.image.update:
+                id: map1
+                src: background_map6
+      - if:
+          condition:
+            lambda: return id(radar_cz) == 7;
+          then:
+            - lvgl.image.update:
+                id: map1
+                src: background_map7
+      - lvgl.widget.hide: radar_img
+      - lvgl.label.update:
+          id: radar_ts
+          text: ""
+      - lvgl.bar.update:
+          id: radar_progress
+          value: 0
+
+  # The zoom wanted (radar_zoom) was changed by a button, or reset to 1x when the screen goes to sleep: update the
+  # zoom label and start a download cycle at the new zoom - straight away if idle, otherwise when the running
+  # cycle ends (radar_again)
+  - id: script_radar_zoom_apply
+    then:
+      - lvgl.label.update:
+          id: radar_zoom_lbl
+          text: !lambda |-
+            if (id(radar_zoom) == 5) return "1/2x";
+            if (id(radar_zoom) == 7) return "2x";
+            return "1x";
+      - if:
+          condition:
+            lambda: return id(radar_zoom) != id(radar_mz);
+          then:
+            - if:
+                condition:
+                  lambda: return id(radar_flag) == 0 && !id(radar_busy);
+                then:
+                  - lambda: id(radar_flag) = 1;
+                  - script.execute: script_radar_download
+                else:
+                  - lambda: id(radar_again) = true;
 
   # Satellite image download script            
   - id: script_satellite_download
@@ -439,6 +514,21 @@ globals:
   - id: radar_frame
     type: int
     initial_value: "0"
+  # Radar zoom (Rainviewer zoom level): 5 = 1/2x, 6 = 1x, 7 = 2x.  radar_zoom is what the + / - buttons ask for,
+  # radar_cz is the zoom of the download cycle in progress (fixed at its start), radar_mz is the zoom of the base
+  # map on screen.  radar_zoom_load is true during a cycle that changes the zoom.
+  - id: radar_zoom
+    type: int
+    initial_value: "6"
+  - id: radar_cz
+    type: int
+    initial_value: "6"
+  - id: radar_mz
+    type: int
+    initial_value: "6"
+  - id: radar_zoom_load
+    type: bool
+    initial_value: "false"
   # Counter for radar download errors
   - id: radar_errors
     type: int
@@ -471,6 +561,15 @@ online_image:
         - lambda: |-
             id(radar_flag) = 2;
             id(radar_busy) = false;
+        # zoom change: show each frame as it lands, so something appears after the first download
+        - if:
+            condition:
+              lambda: return id(radar_zoom_load);
+            then:
+              - lvgl.widget.show: radar_img
+              - lvgl.image.update:
+                  id: radar_img
+                  src: radar6
     on_error: 
       # If the download fails, increment error flag.  The radar flag is not updated thus
       # the radar download script will attempt this image again on next run
@@ -489,6 +588,15 @@ online_image:
         - lambda: |-
             id(radar_flag) = 3;
             id(radar_busy) = false;
+        # zoom change: show each frame as it lands, so something appears after the first download
+        - if:
+            condition:
+              lambda: return id(radar_zoom_load);
+            then:
+              - lvgl.widget.show: radar_img
+              - lvgl.image.update:
+                  id: radar_img
+                  src: radar5
     on_error: 
       # If the download fails, increment error flag.  The radar flag is not updated thus
       # the radar download script will attempt this image again on next run
@@ -507,6 +615,15 @@ online_image:
         - lambda: |-
             id(radar_flag) = 4;
             id(radar_busy) = false;
+        # zoom change: show each frame as it lands, so something appears after the first download
+        - if:
+            condition:
+              lambda: return id(radar_zoom_load);
+            then:
+              - lvgl.widget.show: radar_img
+              - lvgl.image.update:
+                  id: radar_img
+                  src: radar4
     on_error: 
       # If the download fails, increment error flag.  The radar flag is not updated thus
       # the radar download script will attempt this image again on next run
@@ -525,6 +642,15 @@ online_image:
         - lambda: |-
             id(radar_flag) = 5;
             id(radar_busy) = false;
+        # zoom change: show each frame as it lands, so something appears after the first download
+        - if:
+            condition:
+              lambda: return id(radar_zoom_load);
+            then:
+              - lvgl.widget.show: radar_img
+              - lvgl.image.update:
+                  id: radar_img
+                  src: radar3
     on_error: 
       # If the download fails, increment error flag.  The radar flag is not updated thus
       # the radar download script will attempt this image again on next run
@@ -543,6 +669,15 @@ online_image:
         - lambda: |-
             id(radar_flag) = 6;
             id(radar_busy) = false;
+        # zoom change: show each frame as it lands, so something appears after the first download
+        - if:
+            condition:
+              lambda: return id(radar_zoom_load);
+            then:
+              - lvgl.widget.show: radar_img
+              - lvgl.image.update:
+                  id: radar_img
+                  src: radar2
     on_error: 
       # If the download fails, increment error flag.  The radar flag is not updated thus
       # the radar download script will attempt this image again on next run
@@ -565,6 +700,7 @@ online_image:
             id(radar_flag) = 0;
             id(radar_errors) = 0;
             id(radar_ready) = true;
+            id(radar_zoom_load) = false;
             id(radar_busy) = false;
             // HA only gives the time of each frame (e.g. "3:00 PM") - add the date from the current time.
             // A frame time later than now (by more than 10 min) must be from before midnight.
@@ -591,6 +727,7 @@ online_image:
               id(radar_again) = false;
               id(radar_flag) = 1;
             }
+        - lvgl.widget.show: radar_img
         - lvgl.widget.hide: lbl_downloading
         - lvgl.widget.refresh:
             id: radar_tds
@@ -641,10 +778,16 @@ online_image:
 
 # Static images
 image: 
-  # Base map for the radar panel: 380x330 window, same scale and centre as the 512px zoom 6 radar frames
-  # (generated from Esri street map tiles with town labels and a marker for Rutherglen)
-  - file: "radar_base.png"
-    id: background_map
+  # Base maps for the radar panel: 380x330 window, same scale and centre as the 512px radar frames at zoom 5 / 6 / 7
+  # (made by tools/make_radar_base.py from Esri street map tiles, with town names and a marker at the centre)
+  - file: "maps/radar_base_z5.png"
+    id: background_map5
+    type: RGB565
+  - file: "maps/radar_base_z6.png"
+    id: background_map6
+    type: RGB565
+  - file: "maps/radar_base_z7.png"
+    id: background_map7
     type: RGB565
 
 text_sensor:
@@ -785,7 +928,7 @@ lvgl:
                   id: map1
                   x: 0
                   y: 0
-                  src: background_map
+                  src: background_map6
               # current radar frame (384x384, scaled 4/3 about its centre), positioned so the centre of
               # the frame sits at the centre of the 380x330 window
               - image: 
@@ -796,6 +939,60 @@ lvgl:
                   pivot_y: 192
                   scale: 1.3333
                   src: radar6
+              # zoom label and + / - buttons (+ = zoom in, 2x; - = zoom out, 1/2x).  Back to 1x when the screen sleeps.
+              - label:
+                  id: radar_zoom_lbl
+                  x: 8
+                  y: 8
+                  text_font: calibri_19
+                  text_color: WHITE
+                  bg_color: BLACK
+                  bg_opa: 60%
+                  radius: 5
+                  pad_all: 4
+                  text: "1x"
+              - button:
+                  id: radar_zoom_in
+                  x: 332
+                  y: 6
+                  width: 44
+                  height: 44
+                  bg_color: BLACK
+                  bg_opa: 60%
+                  border_width: 1
+                  border_color: 0xB0B0B0
+                  radius: 8
+                  shadow_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_font: calibri_25
+                        text_color: WHITE
+                        text: "+"
+                  on_short_click:
+                    - lambda: if (id(radar_zoom) < 7) ++id(radar_zoom);
+                    - script.execute: script_radar_zoom_apply
+              - button:
+                  id: radar_zoom_out
+                  x: 332
+                  y: 56
+                  width: 44
+                  height: 44
+                  bg_color: BLACK
+                  bg_opa: 60%
+                  border_width: 1
+                  border_color: 0xB0B0B0
+                  radius: 8
+                  shadow_width: 0
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text_font: calibri_25
+                        text_color: WHITE
+                        text: "-"
+                  on_short_click:
+                    - lambda: if (id(radar_zoom) > 5) --id(radar_zoom);
+                    - script.execute: script_radar_zoom_apply
         # progress bar under the radar - one step per frame
         - bar:
             id: radar_progress
