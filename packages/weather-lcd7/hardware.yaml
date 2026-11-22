@@ -43,7 +43,10 @@ esp32:
       CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
       CONFIG_ESP32S3_DATA_CACHE_64KB: y
       CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y
-      CONFIG_SPIRAM_RODATA: y
+      # CONFIG_SPIRAM_RODATA is deliberately NOT set: it copies all read-only data (the three radar base maps, 250 KB
+      # each) from flash into PSRAM at boot, which left no room for the satellite image.  Without it the maps stay in
+      # flash only.  The one catch: the display could glitch while flash is being written (OTA / settings), so only
+      # update it over the air when the screen is not in use.
       CONFIG_ESPTOOLPY_FLASHSIZE_16MB: y
 
 psram:
